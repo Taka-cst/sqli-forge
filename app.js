@@ -822,7 +822,7 @@ function renderStrips(){
       +'<button type="button" class="btn tiny" onclick="SQLIFORGE.go(\'bypass\')">編集</button>'
       +'<button type="button" class="btn tiny" onclick="SQLIFORGE.clearFilters()">解除</button>';
   }
-  list.forEach(id=>{ const el=$(id); if(el) el.innerHTML=inner; });
+  list.forEach(id=>{ const el=$(id); if(el){ el.innerHTML=inner; el.classList.toggle("on-state",active.size>0); } });
 }
 
 function updateNavBadge(){
