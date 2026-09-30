@@ -1,0 +1,21 @@
+services:
+  db:
+    image: mysql:8
+    environment:
+      MYSQL_ROOT_PASSWORD: forgepass
+      MYSQL_DATABASE: sqforgelab
+    volumes:
+      - ./init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pforgepass"]
+      interval: 3s
+      timeout: 3s
+      retries: 40
+  web:
+    build: .
+    ports:
+      - "127.0.0.1:8091:80"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped

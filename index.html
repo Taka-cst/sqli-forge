@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SQLi Forge — CTF SQL Injection Studio</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#main">本文へスキップ</a>
+
+<div class="app">
+
+<aside class="side">
+  <div class="brand">
+    <h1>
+      <span class="logo" aria-hidden="true"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 2 8 3.5V11c0 5.5-3.5 8.5-8 11-4.5-2.5-8-5.5-8-11V5.5L12 2Z"/><path d="m8.5 12 2.5 2.5 4.5-5"/></svg></span>
+      SQLi <span class="accent">Forge</span>
+    </h1>
+    <p class="tagline">CTF向け SQLインジェクション・ペイロード工房<br>生成・変換・バイパス・攻略</p>
+  </div>
+
+  <nav id="tabs" role="tablist" aria-label="機能セクション">
+    <button class="tab active" role="tab" data-tab="detect" id="tabbtn-detect" aria-controls="tab-detect" aria-selected="true">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+      <span class="stepno">1</span><span>検出</span>
+    </button>
+    <button class="tab" role="tab" data-tab="union" id="tabbtn-union" aria-controls="tab-union" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m12 2 8.5 4.5L12 11 3.5 6.5 12 2Z"/><path d="m3.5 11.5 8.5 4.5 8.5-4.5"/><path d="m3.5 16.5 8.5 4.5 8.5-4.5"/></svg>
+      <span class="stepno">2</span><span>UNION 攻撃</span>
+    </button>
+    <button class="tab" role="tab" data-tab="error" id="tabbtn-error" aria-controls="tab-error" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span class="stepno">3</span><span>エラー攻撃</span>
+    </button>
+    <button class="tab" role="tab" data-tab="blind" id="tabbtn-blind" aria-controls="tab-blind" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.7 5.1A10.9 10.9 0 0 1 12 5c6.5 0 9.5 6 9.5 6a17 17 0 0 1-3 3.9"/><path d="M6.6 6.6A16.7 16.7 0 0 0 2.5 11s3 6 9.5 6a10 10 0 0 0 4.6-1.1"/><line x1="2" y1="2" x2="22" y2="22"/></svg>
+      <span class="stepno">4</span><span>ブラインド</span>
+    </button>
+    <button class="tab" role="tab" data-tab="nosql" id="tabbtn-nosql" aria-controls="tab-nosql" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+      <span>NoSQL</span>
+    </button>
+    <button class="tab" role="tab" data-tab="rce" id="tabbtn-rce" aria-controls="tab-rce" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+      <span>RCE / OOB</span>
+    </button>
+    <button class="tab" role="tab" data-tab="bypass" id="tabbtn-bypass" aria-controls="tab-bypass" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m12 8v4"/><path d="M12 16h.01"/></svg>
+      <span>バイパス設定</span><span class="nbadge" id="nav-fcount" hidden></span>
+    </button>
+    <button class="tab" role="tab" data-tab="tools" id="tabbtn-tools" aria-controls="tab-tools" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+      <span>ツール</span>
+    </button>
+    <button class="tab" role="tab" data-tab="cheat" id="tabbtn-cheat" aria-controls="tab-cheat" aria-selected="false" tabindex="-1">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+      <span>チートシート</span>
+    </button>
+  </nav>
+
+  <div class="side-foot">
+    <div class="notice">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.7 18-8-14a2 2 0 0 0-3.5 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span>許可された環境 (CTF / ワーゲーム / 自環境) 以外への使用は禁止。生成物は教育・競技利用を目的とする。</span>
+    </div>
+    <p class="meta">MySQL / PostgreSQL / SQLite / MSSQL / Oracle<br>offline-ready · single-file build</p>
+  </div>
+</aside>
+
+<div class="content">
+
+<main id="main">
+
+<section id="tab-detect" class="panel active" role="tabpanel" aria-labelledby="tabbtn-detect">
+  <h2>検出 &amp; フィンガープリント</h2>
+  <p class="lead">まず注入点と DBMS を特定する。エラー表示の有無、真偽レスポンスの差分、応答時間の3軸で判定する。</p>
+  <div class="fstrip" id="fs-detect"></div>
+  <div class="ctrl-row">
+    <label><input type="checkbox" id="det-urlenc"> URLエンコード表示</label>
+  </div>
+  <h3>プローブ (注入確認)</h3>
+  <div id="detect-cards" class="cards"></div>
+  <h3>データベース フィンガープリント</h3>
+  <div id="fingerprint" class="tablewrap"></div>
+  <h3>コメント一覧</h3>
+  <div id="comments-tbl" class="tablewrap"></div>
+  <h3>ログインバイパス (認証回避)</h3>
+  <p class="lead">パスワードが <code>md5($_POST[pw])</code> 等でハッシュ比較される場合はバイパス不能 → ブラインド/UNIONでリークする方向へ。</p>
+  <div id="authbypass-cards" class="cards"></div>
+  <div class="crosslinks">
+    <span class="xl-label">次のステップ:</span>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('union')">エコーがある → UNION</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('error')">エラーが出る → エラー攻撃</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('blind')">何も出ない → ブラインド</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('bypass')">サニタイズされている → バイパス設定</button>
+  </div>
+</section>
+
+<section id="tab-union" class="panel" role="tabpanel" aria-labelledby="tabbtn-union" tabindex="-1">
+  <h2>UNION SELECT ビルダー</h2>
+  <p class="lead">カラム数特定 → 表示列特定 → 情報取得 → テーブル/カラム列挙 → データ抽出。必要なペイロード列を全部まとめて生成する。</p>
+  <div class="fstrip" id="fs-union"></div>
+  <div class="ctrl-grid">
+    <label>注入点プレフィックス <select id="un-prefix"></select></label>
+    <label>DBMS <select id="un-dbms"></select></label>
+    <label>カラム数 <input type="number" id="un-cols" value="4" min="1" max="40"></label>
+    <label>表示列位置 <input type="number" id="un-echo" value="2" min="1" max="40"></label>
+    <label>コメント <select id="un-comment"></select></label>
+    <label>無効化ID <input type="text" id="un-negid" value="-1" size="6" title="元クエリの行を消すID(存在しない値)"></label>
+    <label><input type="checkbox" id="un-urlenc"> URLエンコード表示</label>
+  </div>
+  <h3>① カラム数特定 (総当たり)</h3>
+  <div id="un-colcount" class="cards"></div>
+  <h3>② 表示列の特定</h3>
+  <div id="un-echofind" class="cards"></div>
+  <h3>③ 基本情報 (version / db / user)</h3>
+  <div id="un-info" class="cards"></div>
+  <h3>④ テーブル・カラム列挙 → データ抽出</h3>
+  <div class="ctrl-row">
+    <label>テーブル名 <input type="text" id="un-table" value="users" size="14"></label>
+    <label>データカラム1 <input type="text" id="un-col" value="username" size="14"></label>
+    <label>データカラム2 <input type="text" id="un-col2" value="password" size="14"></label>
+    <label>検索条件 <input type="text" id="un-where" placeholder="例: id='admin' (空なら全行)" size="22"></label>
+    <button type="button" class="btn primary" id="un-gen">生成</button>
+  </div>
+  <div id="un-dump" class="cards"></div>
+  <h3>⑤ 複数行の扱い</h3>
+  <div id="un-multirow" class="cards"></div>
+  <h3>⑥ information_schema が使えない時</h3>
+  <div id="un-nois" class="cards"></div>
+  <h3>⑦ テーブル名・カラム名総当たり辞書</h3>
+  <p class="lead">スキーマ参照が不可能/面倒な時は、ありきたりな名前を総当たりする。生成されたペイロードを Intruder に流す。</p>
+  <div class="ctrl-row">
+    <label>対象 <select id="un-wl-target"><option value="table">テーブル名</option><option value="column">カラム名</option></select></label>
+    <label>当て方 <select id="un-wl-mode">
+      <option value="exists">存在チェック (1=1 が返る)</option>
+      <option value="like">LIKE先頭一致 (1文字ずつ特定)</option>
+    </select></label>
+    <button type="button" class="btn" id="un-wl-gen">辞書ペイロード生成</button>
+  </div>
+  <div id="un-wordlist"></div>
+  <h3>⑧ 特殊コンテキスト (ORDER BY / LIMIT / INSERT / UPDATE / LIKE検索)</h3>
+  <p class="lead">WHERE 以外が注入点の場合、UNION の形そのものが変わる。文脈を選ぶと専用ペイロードを出す。</p>
+  <div class="ctrl-row">
+    <label>文脈 <select id="un-ctx">
+      <option value="orderby">ORDER BY 句 (ソートパラメータ)</option>
+      <option value="limit">LIMIT 句</option>
+      <option value="insert">INSERT VALUES 内</option>
+      <option value="update">UPDATE SET 内</option>
+      <option value="like">LIKE 検索 (%...%)</option>
+    </select></label>
+  </div>
+  <div id="un-ctx-cards" class="cards"></div>
+  <h3>⑨ 横断列挙 (全DB検索 / ユーザー / ハッシュ / 権限) — sqlmapの --search/--users/--passwords 相当</h3>
+  <div class="ctrl-row">
+    <label>検索キーワード <input type="text" id="un-keyword" value="flag" size="14"></label>
+    <span class="fs-note">DBMSはタブ先頭の選択に追従 / スキーマ横断は information_schema 経由</span>
+  </div>
+  <div id="un-xenum" class="cards"></div>
+  <div class="crosslinks">
+    <span class="xl-label">行き詰まったら:</span>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('bypass')">UNIONが拒否される → バイパス設定</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('error')">エコー列が無い → エラー攻撃</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('blind')">反応が無い → ブラインド</button>
+  </div>
+</section>
+
+<section id="tab-error" class="panel" role="tabpanel" aria-labelledby="tabbtn-error" tabindex="-1">
+  <h2>エラーベース</h2>
+  <p class="lead">エラーメッセージに値を吐かせる。UNION不要・表示列不要で一番手軽。MySQL の XPATH系は32文字制限があるので <code>substr</code> で分割すること。</p>
+  <div class="fstrip" id="fs-error"></div>
+  <div class="ctrl-row">
+    <label>DBMS <select id="er-dbms"></select></label>
+    <label>プレフィックス <select id="er-prefix"></select></label>
+    <label>コメント <select id="er-comment"></select></label>
+  </div>
+  <div id="er-cards" class="cards"></div>
+  <div class="crosslinks">
+    <span class="xl-label">行き詰まったら:</span>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('blind')">エラーが出ない → ブラインド</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('cheat')">スタック可/OOB → チートシート</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('bypass')">関数が拒否される → バイパス設定</button>
+  </div>
+</section>
+
+<section id="tab-blind" class="panel" role="tabpanel" aria-labelledby="tabbtn-blind" tabindex="-1">
+  <h2>ブラインド (Boolean / Time-based) 工房</h2>
+  <p class="lead">出力が一切無い場合でも、真偽の差分か遅延で1ビットずつ抜く。ここでは式の組み立てと、全自動化スクリプトの生成を行う。</p>
+  <div class="fstrip" id="fs-blind"></div>
+  <div class="ctrl-grid">
+    <label>DBMS <select id="bl-dbms"></select></label>
+    <label>プレフィックス <select id="bl-prefix"></select></label>
+    <label>コメント <select id="bl-comment"></select></label>
+    <label>抽出カラム <input type="text" id="bl-col" value="pw" size="12"></label>
+    <label>テーブル <input type="text" id="bl-table" value="members" size="12"></label>
+    <label>行の条件 <input type="text" id="bl-where" value="id='admin'" size="20"></label>
+    <label>行番号 (0=1行目) <input type="number" id="bl-row" value="0" min="0" max="999" class="short"></label>
+    <label><input type="checkbox" id="bl-enc"> URLエンコード表示</label>
+  </div>
+  <h3>長さ特定</h3>
+  <div id="bl-length" class="cards"></div>
+  <h3>1文字特定 (等値 / 二分探索 / LIKE)</h3>
+  <div id="bl-char" class="cards"></div>
+  <h3>時間ベース (条件付き遅延)</h3>
+  <div id="bl-time" class="cards"></div>
+  <h3>全自動抽出スクリプト生成 (Python)</h3>
+  <div class="ctrl-grid">
+    <label>URL <input type="text" id="sc-url" value="http://localhost:8080/?no=" size="34" placeholder="http://target/?param="></label>
+    <label>パラメータ名 <input type="text" id="sc-param" value="no" size="10"></label>
+    <label>方式 <select id="sc-method"><option>GET</option><option>POST</option></select></label>
+    <label>判定モード <select id="sc-mode">
+      <option value="in">マーカー文字列 (真のとき含まれる)</option>
+      <option value="out">マーカー文字列 (真のとき含まれない)</option>
+      <option value="time">時間 (遅延で真偽)</option>
+      <option value="len">応答長 (真のとき N バイト超)</option>
+    </select></label>
+    <label>マーカー <input type="text" id="sc-marker" value="Hello admin" size="18"></label>
+    <label>遅延秒 <input type="number" id="sc-delay" value="3" min="1" max="10" class="short"></label>
+    <label>応答長しきい値 <input type="number" id="sc-len" value="1000" min="1" class="short"></label>
+    <label>文字範囲 <select id="sc-range"><option value="ascii">ASCII 32-126</option><option value="wide">バイト 32-255 (UTF-8/韓国語対応)</option></select></label>
+  </div>
+  <div class="ctrl-grid">
+    <label>リクエスト形式 <select id="sc-reqtype">
+      <option value="GET">GET パラメータ</option>
+      <option value="POST">POST フォーム</option>
+      <option value="JSON">JSON ボディ</option>
+      <option value="HEADER">HTTPヘッダー (XFF等)</option>
+    </select></label>
+    <label>ヘッダー名 <input type="text" id="sc-hdrname" value="X-Forwarded-For" size="18"></label>
+    <label>並列数 <input type="number" id="sc-threads" value="4" min="1" max="16" class="short"></label>
+    <label>判定用URL (二次注入/別ページ判定) <input type="text" id="sc-second" value="" size="28" placeholder="空なら同じレスポンスで判定"></label>
+    <label>追加ヘッダー (1行1個) <textarea id="sc-headers" class="ta" rows="2" placeholder="Cookie: PHPSESSID=abc123"></textarea></label>
+  </div>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="sc-gen">スクリプト生成</button>
+    <button type="button" class="btn" id="sc-download">blind.py ダウンロード</button>
+  </div>
+  <pre id="sc-out" class="codeblock"></pre>
+  <div class="crosslinks">
+    <span class="xl-label">行き詰まったら:</span>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('bypass')">substr/sleepが拒否 → バイパス設定</button>
+    <button type="button" class="btn tiny" onclick="SQLIFORGE.go('cheat')">外部通信可 → OOB (チートシート)</button>
+  </div>
+</section>
+
+<section id="tab-nosql" class="panel" role="tabpanel" aria-labelledby="tabbtn-nosql" tabindex="-1">
+  <h2>NoSQL (MongoDB) インジェクション</h2>
+  <p class="lead">最近のCTFで頻出。PHP が <code>$_GET/$_POST</code> をそのまま Mongo クエリに渡す実装が標的。<code>param[$ne]=</code> 形式で演算子を注入する。</p>
+  <h3>検出</h3>
+  <div id="ns-detect" class="cards"></div>
+  <h3>認証バイパス</h3>
+  <div id="ns-auth" class="cards"></div>
+  <h3>盲注 ($regex / $where)</h3>
+  <div id="ns-blind" class="cards"></div>
+  <h3>$regex 全自動抽出スクリプト生成 (Python)</h3>
+  <div class="ctrl-grid">
+    <label>URL <input type="text" id="ns-url" value="http://localhost:8081/login" size="32"></label>
+    <label>ユーザー名パラメータ <input type="text" id="ns-up" value="username" size="12"></label>
+    <label>パスワードパラメータ <input type="text" id="ns-pp" value="password" size="12"></label>
+    <label>固定ユーザー名 <input type="text" id="ns-user" value="admin" size="10"></label>
+    <label>形式 <select id="ns-req"><option>GET</option><option>POST</option><option>JSON</option></select></label>
+    <label>真判定マーカー <input type="text" id="ns-marker" value="login ok" size="14"></label>
+  </div>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="ns-gen">スクリプト生成</button>
+    <button type="button" class="btn" id="ns-dl">nosql_blind.py ダウンロード</button>
+  </div>
+  <pre id="ns-out" class="codeblock"></pre>
+</section>
+
+<section id="tab-rce" class="panel" role="tabpanel" aria-labelledby="tabbtn-rce" tabindex="-1">
+  <h2>RCE / OOB チェーン ビルダー</h2>
+  <p class="lead">スタックドクエリ (PG/MSSQL) や FILE権限 (MySQL) があればコマンド実行まで行ける。コールバック先 (自分のIP/ポート/dnslogドメイン) を入れると即席チェーンを生成する。</p>
+  <div class="ctrl-grid">
+    <label>DBMS <select id="rc-dbms"></select></label>
+    <label>攻撃者ホスト <input type="text" id="rc-host" value="10.10.14.1" size="14"></label>
+    <label>ポート <input type="text" id="rc-port" value="4444" size="6"></label>
+    <label>OOBドメイン <input type="text" id="rc-domain" value="xxxx.dnslog.cn" size="18"></label>
+    <label>書込パス <input type="text" id="rc-path" value="/var/www/html" size="18"></label>
+  </div>
+  <div id="rc-cards" class="cards"></div>
+  <h3>ファイル読み取り (--file-read 相当)</h3>
+  <div id="rc-read" class="cards"></div>
+  <h3>スタックドクエリ対応表</h3>
+  <div id="rc-stacked" class="tablewrap"></div>
+</section>
+
+<section id="tab-bypass" class="panel" role="tabpanel" aria-labelledby="tabbtn-bypass" tabindex="-1">
+  <h2>バイパス設定 (全タブに自動適用)</h2>
+  <p class="lead">ここで有効にしたフィルタは <b>検出 / UNION / エラー / ブラインド の全ペイロードに自動変換して反映される</b>。まず問題のソースを貼って自動検出 → 細部はチップで調整。</p>
+
+  <h3>① ソースコード解析 (自動検出)</h3>
+  <textarea id="bp-src" class="ta" rows="10" placeholder="問題で配られる index.php などをそのまま貼り付け (&lt;?php ... ?&gt;)"></textarea>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="bp-analyze">解析してフィルタ自動設定</button>
+  </div>
+  <div id="bp-analyze-out"></div>
+
+  <h3>② フィルタ選択 (全ペイロードに適用)</h3>
+  <div class="ctrl-row">
+    <label>検出方式 <select id="bp-mode">
+      <option value="replace">str_replace 型 (削除 → 二重書き有効)</option>
+      <option value="reject">preg_match 型 (拒絶 → 分割/代替が必要)</option>
+      <option value="waf">WAF (正規表現外の回避も視野)</option>
+    </select></label>
+    <label>プリセット <select id="bp-preset"></select></label>
+    <button type="button" class="btn" id="bp-clear">全クリア</button>
+  </div>
+  <div id="bp-chips" class="chips"></div>
+
+  <h3>③ 手動変換プレイグラウンド (1個だけ試す時)</h3>
+  <textarea id="bp-input" class="ta" rows="4">1' UNION SELECT 1,version(),3 FROM information_schema.tables-- -</textarea>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="bp-run">変換</button>
+    <button type="button" class="btn" id="bp-copy">コピー</button>
+    <button type="button" class="btn" id="bp-copy-enc">URLエンコード版コピー</button>
+  </div>
+  <pre id="bp-out" class="codeblock"></pre>
+  <pre id="bp-out-enc" class="codeblock dim"></pre>
+  <h3>変換ログ</h3>
+  <div id="bp-steps"></div>
+  <h3>代替案</h3>
+  <div id="bp-variants" class="cards"></div>
+  <h3>④ ブラックボックス・フィルタ逆探査 (ソース無し時)</h3>
+  <p class="lead">各プローブを1個ずつ送り、ブロック/エラー/画面差分が出たものにチェック → 「反映」でチップ化。Intruder に流すなら一括コピー。</p>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="bp-apply-probes">チェック済みをフィルタに反映</button>
+    <button type="button" class="btn" id="bp-copy-probes">全プローブ一括コピー (1行1個)</button>
+  </div>
+  <div id="bp-probes" class="cards"></div>
+</section>
+
+<section id="tab-tools" class="panel" role="tabpanel" aria-labelledby="tabbtn-tools" tabindex="-1">
+  <h2>エンコーダ / デコーダ / 変換ツール</h2>
+  <textarea id="tl-input" class="ta" rows="3">admin' AND 1=1-- -</textarea>
+  <div id="tl-outputs" class="cards"></div>
+  <h3>スペース代替一覧</h3>
+  <div id="tl-spaces" class="tablewrap"></div>
+  <h3>カンマ回避一覧</h3>
+  <div id="tl-commas" class="tablewrap"></div>
+  <h3>= の代替一覧</h3>
+  <div id="tl-eqs" class="tablewrap"></div>
+  <h3>文字列連結 (DBMS別)</h3>
+  <div id="tl-concats" class="tablewrap"></div>
+  <h3>curl コマンド生成</h3>
+  <div class="ctrl-grid">
+    <label>URL <input type="text" id="cu-url" value="http://localhost:8080/" size="34"></label>
+    <label>パラメータ名 <input type="text" id="cu-param" value="id" size="10"></label>
+    <label>方式 <select id="cu-method"><option>GET</option><option>POST</option></select></label>
+    <label>ペイロード <input type="text" id="cu-payload" value="1' UNION SELECT 1,version(),3-- -" size="40"></label>
+  </div>
+  <div class="ctrl-row"><button type="button" class="btn primary" id="cu-gen">生成</button></div>
+  <pre id="cu-out" class="codeblock"></pre>
+  <h3>sqlmap コマンド生成 (tamper自動提案)</h3>
+  <p class="lead">バイパス設定のフィルタ内容から最適な tamper を選んでコマンドを組み立てる。認証が必要な題材は Burp でリクエストを保存して <code>-r req.txt</code> を使う。</p>
+  <div class="ctrl-grid">
+    <label>URL <input type="text" id="sm-url" value="http://localhost:8081/?no=1" size="32"></label>
+    <label>パラメータ名 <input type="text" id="sm-param" value="no" size="10"></label>
+    <label>方式 <select id="sm-method"><option>GET</option><option>POST</option></select></label>
+  </div>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="sm-gen">生成</button>
+    <button type="button" class="btn" onclick="SQLIFORGE.go('bypass')">tamperの元になるフィルタを設定</button>
+  </div>
+  <pre id="sm-out" class="codeblock"></pre>
+</section>
+
+<section id="tab-cheat" class="panel" role="tabpanel" aria-labelledby="tabbtn-cheat" tabindex="-1">
+  <h2>チートシート (CTFパターン事例集)</h2>
+  <p class="lead">Writeup頻出パターンを技法別にまとめた総覧。検索ボックスで絞り込みできる。</p>
+  <input type="search" id="ch-search" class="ta" placeholder="検索: 例: gbk, order by, xff, 二次, outfile, sleep, sqlmap..." aria-label="チートシート検索">
+  <div id="ch-list"></div>
+</section>
+
+</main>
+
+<footer>
+  <span>SQLi Forge — 単一HTMLでも動作 (build_standalone.sh)。DBMS: MySQL / PostgreSQL / SQLite / MSSQL / Oracle。</span>
+</footer>
+
+</div>
+</div>
+
+<script src="data.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

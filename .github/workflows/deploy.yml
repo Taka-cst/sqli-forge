@@ -1,0 +1,101 @@
+name: CI & Pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Syntax check
+        run: |
+          node --check data.js
+          node --check app.js
+      - name: Validate app renders (DOM smoke test)
+        run: |
+          cat data.js app.js > /tmp/bundle.js
+          node -e '
+          const fs=require("fs");
+          const html=fs.readFileSync("index.html","utf8");
+          const defaults={};
+          for(const m of html.matchAll(/<[a-z]+\s[^>]*>/g)){
+            const tag=m[0];
+            const idm=tag.match(/id="([^"]+)"/);
+            if(!idm) continue;
+            const valm=tag.match(/value="([^"]*)"/);
+            defaults[idm[1]]={value:valm?valm[1]:"",checked:/\bchecked\b/.test(tag)};
+          }
+          for(const m of html.matchAll(/<textarea[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/textarea>/g)){
+            defaults[m[1]]={value:m[2],checked:false};
+          }
+          for(const m of html.matchAll(/<select[^>]*id="([^"]+)"[^>]*>([\s\S]*?)<\/select>/g)){
+            const raw=m[2].match(/<option[^>]*value="([^"]*)"[^>]*>/)||m[2].match(/<option[^>]*>([^<]*)<\/option>/);
+            defaults[m[1]]={value:raw?raw[1]:"",checked:false};
+          }
+          const elements={};
+          function makeEl(id){
+            const el={id,dataset:{},className:"",textContent:"",hidden:false,tabIndex:0,
+              checked:!!(defaults[id]&&defaults[id].checked),
+              classList:{add(){},remove(){},toggle(){}},
+              addEventListener(){},appendChild(){},click(){},select(){},setAttribute(){},
+              setAttribute2(){}};
+            let _v=defaults[id]?defaults[id].value:"";
+            Object.defineProperty(el,"value",{get:()=>_v,set:v=>{_v=v;}});
+            let _h="";
+            Object.defineProperty(el,"innerHTML",{get:()=>_h,set:v=>{_h=v;const mo=String(v).match(/<option value="([^"]*)" selected/);if(mo)_v=mo[1];}});
+            return el;
+          }
+          global.document={getElementById(id){if(!elements[id])elements[id]=makeEl(id);return elements[id];},
+            querySelectorAll(){return [];},createElement:t=>makeEl("_"+t),addEventListener(){},body:{appendChild(){}}};
+          global.navigator={};global.window=global;global.btoa=s=>Buffer.from(s,"binary").toString("base64");
+          global.TextEncoder=require("util").TextEncoder;global.Blob=class{};global.URL={createObjectURL:()=>"x"};
+          let code=fs.readFileSync("/tmp/bundle.js","utf8").replace(`"use strict";`,"");
+          code=code.replace(`document.addEventListener("DOMContentLoaded",initUI);`,"initUI();");
+          eval(code);
+          const need=["detect-cards","authbypass-cards","un-colcount","un-info","un-xenum","bl-char","er-cards","ns-blind","rc-cards","bp-probes","ch-list"];
+          let bad=[];
+          for(const id of need){const el=document.getElementById(id);if(!el.innerHTML||el.innerHTML.length<50)bad.push(id);}
+          if(bad.length){console.error("RENDER FAIL:",bad.join(","));process.exit(1);}
+          console.log("render OK:",need.length,"sections");
+          '
+      - name: Build standalone HTML
+        run: |
+          chmod +x build_standalone.sh
+          ./build_standalone.sh
+          test -s dist/sqli_forge.html
+      - name: Assemble Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          mkdir -p _site
+          cp dist/sqli_forge.html _site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        with:
+          path: _site
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

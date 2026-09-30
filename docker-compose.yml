@@ -1,0 +1,7 @@
+services:
+  sqli-forge:
+    build: .
+    container_name: sqli-forge
+    ports:
+      - "8080:80"
+    restart: unless-stopped
