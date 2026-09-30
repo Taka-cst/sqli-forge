@@ -1040,11 +1040,11 @@ FILTERS.splice(3, 0,
 );
 
 const ERR_DB_SIGS = [
-  { re: "you have an error in your SQL syntax|check the manual that corresponds to your (?:MySQL|MariaDB) server version|Warning\\s*:\\s*mysql_|mysqli?_[a-z_]+\\(|MySQL server|\\d+\\.\\d+(?:\\.\\d+)?[- ](?:MariaDB|MySQL)", db: "mysql", label: "MySQL / MariaDB" },
+  { re: "you have an error in your SQL syntax|check the manual that corresponds to your (?:MySQL|MariaDB) server version|Warning\\s*:\\s*mysql_|mysqli?_[a-z_]+\\(|MySQL server|\\d+\\.\\d+(?:\\.\\d+)?[- ](?:MariaDB|MySQL)|Table '[^']+' doesn't exist", db: "mysql", label: "MySQL / MariaDB" },
   { re: "invalid input syntax for|psycopg2|PostgreSQL|Npgsql|pg_attrdef", db: "postgres", label: "PostgreSQL" },
   { re: "Conversion failed when converting|Unclosed quotation mark after|Incorrect syntax near|Microsoft SQL Server|ODBC SQL Server Driver|SQL Server Native Client|pyodbc|SqlClient", db: "mssql", label: "MSSQL (SQL Server)" },
   { re: "ORA-\\d+|Oracle Database|TNS:|SP2-\\d+", db: "oracle", label: "Oracle" },
-  { re: "SQLITE_[A-Z_]+|SQLite3?::|sqlite3?\\.(?:OperationalError|ProgrammingError|DatabaseError)|unrecognized token|SQL error or missing database|SQLite", db: "sqlite", label: "SQLite" }
+  { re: "SQLITE_[A-Z_]+|SQLite3?::|sqlite3?\\.(?:OperationalError|ProgrammingError|DatabaseError)|unrecognized token|SQL error or missing database|SQLite|near [\"'][^\"']*[\"']:\\s*syntax error", db: "sqlite", label: "SQLite" }
 ];
 
 const ERR_LEAK_SIGS = [

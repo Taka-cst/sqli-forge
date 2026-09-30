@@ -516,6 +516,14 @@ function analyzeErrorText(text){
   if(out.leaks.length) out.actions.push({t:"エラーベース一覧へ (リークが機能中)",act:"error",db:out.dbms||out.leaks[0].db});
   const nm=t.match(/near ['"]([^'"\\]{0,150}(?:\\.[^'"\\]{0,150})*)['"]?/i);
   if(nm) out.near=nm[1];
+  const ut=t.match(/unrecognized token:?\s*(?:"([^"]*)"|'([^']*)')/i);
+  if(ut){
+    const tok=ut[1]!==undefined?ut[1]:ut[2];
+    out.near=out.near||tok;
+    if(/^['"`]$/.test(tok)) out.flags.quoted=true;
+    out.notes.push("unrecognized token は SQLite 特有の形式。トークン「"+tok+"」がそのまま文脈を示す (引用符なら文字列コンテキスト確定 / その他の文字ならそこまで到達済み)");
+  }
+  if(/incomplete input/i.test(t)) out.flags.quoted=true;
   if(/\\['"]/.test(t)) out.flags.escaped=true;
   if(/unterminated quoted string|quoted string not properly terminated|Unclosed quotation mark/i.test(t)) out.flags.quoted=true;
   if(/different number of columns|incorrect number of result columns|ORA-01789|used SELECT statements have a different/i.test(t)){
@@ -528,6 +536,14 @@ function analyzeErrorText(text){
     out.actions.push({t:"UNIONビルダーへ (列数 "+out.flags.colCount+" を設定)",act:"union",db:out.dbms,n:String(out.flags.colCount)});
   }
   if(out.dbms) out.notes.push("DBMS判定: "+out.dbLabel+(out.version?" / バージョン "+out.version:""));
+  if(out.dbms==="sqlite"){
+    out.notes.push("SQLite は詳細エラー系 (XPATH/CAST) が不可 → UNION + sqlite_master.sql で全構造一括取得が最短。load_extension エラー盲注も可");
+    if(!out.actions.some(a=>a.act==="union")) out.actions.push({t:"UNIONビルダーへ (SQLite / sqlite_master が最容易)",act:"union",db:"sqlite"});
+  }
+  if(/no such column/i.test(t)) out.notes.push("no such column → カラム存在チェックのオラクル: 正しい名前なら出ない → UNION⑦ 辞書総当たりと相性抜群");
+  const nst=/no such table/i.test(t)||/relation "([^"]+)" does not exist/i.test(t)||/Table '([^']+)' doesn't exist/i.test(t)||/Invalid object name '([^']+)'/i.test(t);
+  if(nst) out.notes.push("テーブル不存在エラー → テーブル名総当たり (UNION⑦) のオラクルになる: 存在すれば違う応答/エラーに変わる");
+  if(/no such function:?\s*["']?(\S+)/i.test(t)) out.notes.push("no such function → 関数存在チェックに利用可。sleep が無いSQLite等は代替遅延 (randomblob / 重いクエリ) を");
   if(out.flags.escaped) out.notes.push("入力がエスケープされている (\\' の形で残存) → 引用符バイパス (hex/ワイドバイト) が必要");
   if(out.flags.quoted||(/^['"]/.test(out.near||""))) out.notes.push("引用符が閉じられていない = 文字列コンテキスト確定 → プレフィックス 1' 系で注入可");
   if(out.near) out.notes.push("near 断片 = 注入点直後の元クエリの一部: 「"+out.near+"」 — 直後の構造 (LIMIT/AND等) のヒントになる");
