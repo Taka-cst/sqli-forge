@@ -1064,6 +1064,101 @@ function genSqlmap(){
   $("sm-out").textContent=out;
 }
 
+let wz={node:"q_detect",path:[],values:{}};
+
+function wzApplyBlind(timeMode){
+  const dbms=$("wiz-dbms").value;
+  const v=id=>(wz.values[id]!==undefined&&wz.values[id]!=="")?wz.values[id]:(WIZARD.f_bool.fields.concat(WIZARD.f_time.fields).find(f=>f.id===id)||{val:""}).val;
+  $("bl-dbms").value=dbms;
+  $("bl-col").value=v("wz-col");
+  $("bl-table").value=v("wz-table");
+  $("bl-where").value=v("wz-where");
+  $("sc-mode").value=timeMode?"time":(v("wz-judge")||"in");
+  if(timeMode&&$("wz-delay")) $("sc-delay").value=parseInt(v("wz-delay")||"3",10)||3;
+  renderBlind();
+  switchTab("blind");
+  toast("盲注設定へ転記しました — スクリプト生成へ");
+}
+
+const WZ_ACT={
+  detect:()=>switchTab("detect"),
+  cheat:()=>switchTab("cheat"),
+  rce:()=>switchTab("rce"),
+  bypass:()=>switchTab("bypass"),
+  bypassUS:()=>{ active.add("union"); active.add("select"); renderChips(); refreshAll(); switchTab("bypass"); toast("union+select フィルタをセットしました"); },
+  union:()=>{
+    $("un-dbms").value=$("wiz-dbms").value;
+    $("un-cols").value=parseInt(wz.values["wz-cols"]||"4",10)||4;
+    $("un-echo").value=parseInt(wz.values["wz-echo"]||"2",10)||2;
+    unBuild();
+    switchTab("union");
+    toast("UNIONビルダーへ転記しました");
+  },
+  error:()=>{
+    $("er-dbms").value=$("wiz-dbms").value;
+    renderErrors();
+    switchTab("error");
+    toast("エラーベースタブへ (DBMS設定済み)");
+  },
+  blind:()=>wzApplyBlind(false),
+  timeblind:()=>wzApplyBlind(true)
+};
+
+function wzGo(next,tag){
+  wz.path.push({tag:tag,node:wz.node});
+  wz.node=next;
+  renderWizard();
+}
+
+function wzRestart(){
+  wz={node:"q_detect",path:[],values:{}};
+  renderWizard();
+}
+
+function renderWizard(){
+  const p=$("wz-path"),b=$("wz-body");
+  if(!p||!b) return;
+  p.innerHTML=wz.path.length
+    ? wz.path.map((x,i)=>'<button type="button" class="wz-tag" data-i="'+i+'" title="ここまで戻る">› '+esc(x.tag)+'</button>').join(" ")
+    : '<span class="wz-hint">質問に答えると最適な技法とペイロード生成先を提案します (タグをクリックで巻き戻し)</span>';
+  p.querySelectorAll(".wz-tag").forEach(t=>t.addEventListener("click",()=>{
+    const i=parseInt(t.dataset.i,10);
+    wz.node=wz.path[i].node;
+    wz.path=wz.path.slice(0,i);
+    renderWizard();
+  }));
+  const n=WIZARD[wz.node];
+  if(!n){ b.innerHTML=""; return; }
+  if(n.opts){
+    b.innerHTML='<div class="wz-q">'+esc(n.q)+'</div><div class="wz-opts">'
+      +n.opts.map((o,i)=>'<button type="button" class="wz-opt'+(i===0?" yes":"")+'" data-next="'+o.next+'" data-tag="'+esc(o.tag)+'">'+esc(o.t)+'</button>').join("")
+      +'</div>';
+    b.querySelectorAll(".wz-opt").forEach(btn=>btn.addEventListener("click",()=>wzGo(btn.dataset.next,btn.dataset.tag)));
+  }else if(n.form){
+    const fields=n.fields.map(f=>{
+      const cur=wz.values[f.id]!==undefined?wz.values[f.id]:f.val;
+      let inp;
+      if(f.type==="select") inp='<select id="'+f.id+'">'+f.opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===cur?" selected":"")+'>'+esc(o[1])+'</option>').join("")+'</select>';
+      else inp='<input type="'+(f.type==="num"?"number":"text")+'" id="'+f.id+'" value="'+esc(cur)+'">';
+      return '<div class="wz-field"><label for="'+f.id+'">'+esc(f.label)+'</label>'+inp+'</div>';
+    }).join("");
+    b.innerHTML='<div class="wz-q">'+esc(n.form)+'</div><div class="wz-form">'+fields+'</div>'
+      +'<button type="button" class="btn primary wz-cta" id="wz-cta">'+esc(n.cta.t)+'</button>'
+      +(n.note?'<div class="wz-note">'+esc(n.note)+'</div>':"");
+    b.querySelectorAll(".wz-field input,.wz-field select").forEach(el=>{
+      el.addEventListener("input",()=>{ wz.values[el.id]=el.value; });
+      el.addEventListener("change",()=>{ wz.values[el.id]=el.value; });
+    });
+    const cta=$("wz-cta");
+    if(cta) cta.addEventListener("click",()=>WZ_ACT[n.cta.act]());
+  }else if(n.end){
+    b.innerHTML='<div class="wz-q">'+esc(n.end)+'</div><div class="wz-tech">推定: '+esc(n.tech)+'</div>'
+      +(n.notes?'<ul class="wz-notes">'+n.notes.map(x=>'<li>'+esc(x)+'</li>').join("")+'</ul>':"")
+      +'<div class="wz-links">'+n.links.map(l=>'<button type="button" class="btn tiny" data-act="'+l.act+'">'+esc(l.t)+'</button>').join("")+'</div>';
+    b.querySelectorAll(".wz-links .btn").forEach(btn=>btn.addEventListener("click",()=>WZ_ACT[btn.dataset.act]()));
+  }
+}
+
 function initUI(){
   window.SQLIFORGE=window.SQLIFORGE||{_lastScript:""};
   initTabs();
@@ -1114,6 +1209,9 @@ function initUI(){
 
   $("sm-gen").addEventListener("click",genSqlmap);
   genSqlmap();
+
+  $("wz-restart").addEventListener("click",wzRestart);
+  renderWizard();
 
   const blRerender=()=>renderBlind();
   ["bl-dbms","bl-prefix","bl-comment","sc-mode","sc-range","sc-method","sc-reqtype","ns-req"].forEach(id=>{const el=$(id); if(el) el.addEventListener("change",blRerender);});
@@ -1172,7 +1270,7 @@ function initUI(){
     runBypass();
     toast("プレイグラウンドへ送りました");
   };
-  window.SQLIFORGE._internals={active:active,refreshAll:refreshAll};
+  window.SQLIFORGE._internals={active:active,refreshAll:refreshAll,wzGo:wzGo,renderWizard:renderWizard,wz:wz};
   refreshAll();
   genScript(false);
 }

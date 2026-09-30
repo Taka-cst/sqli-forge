@@ -842,3 +842,130 @@ CHEATS.push(
       +"<tr><td>クロール/フォーム解析/プロキシ/Tor</td><td>○</td><td>× (スコープ外。 Burp + 本ツール併用を推奨)</td></tr></table>"
   }
 );
+
+const WIZARD = {
+  q_detect: {
+    q: "パラメータに ' を入れると反応がある? (SQLエラー / 画面差分 / 500)",
+    opts: [
+      { t: "Yes — 反応あり", next: "q_echo", tag: "注入あり" },
+      { t: "No — 反応なし", next: "end_detect", tag: "未検出" }
+    ]
+  },
+  q_echo: {
+    q: "DBの値が画面に表示される? (検索結果・会員情報など = エコー列あり)",
+    opts: [
+      { t: "Yes — 表示される", next: "q_union", tag: "エコーあり" },
+      { t: "No — 表示されない", next: "q_error", tag: "エコー無し" }
+    ]
+  },
+  q_union: {
+    q: "UNION SELECT が通る? (ORDER BY 1,2,... でカラム数が取れる)",
+    opts: [
+      { t: "Yes — 通る", next: "f_union", tag: "UNION可" },
+      { t: "No — 通らない", next: "q_union_block", tag: "UNION不可" }
+    ]
+  },
+  q_union_block: {
+    q: "union / select が拒否・削除されていそう? (エラー文言や挙動から)",
+    opts: [
+      { t: "Yes — フィルタされてる", next: "end_bypass", tag: "キーワード拒否" },
+      { t: "No / わからない", next: "q_error", tag: "別路線へ" }
+    ]
+  },
+  q_error: {
+    q: "詳細なエラーメッセージが出る? (XPATH error 等に値を載せられそう)",
+    opts: [
+      { t: "Yes — 出る", next: "f_error", tag: "エラー表示あり" },
+      { t: "No — 出ない", next: "q_bool", tag: "エラー無し" }
+    ]
+  },
+  q_bool: {
+    q: "真偽で差分が出る? (AND 1=1 と AND 1=2 で内容/ステータスが変わる)",
+    opts: [
+      { t: "Yes — 差分あり", next: "f_bool", tag: "ブール差分あり" },
+      { t: "No — 変わらない", next: "q_time", tag: "差分無し" }
+    ]
+  },
+  q_time: {
+    q: "応答時間を操作できる? (SLEEP を入れると遅延する)",
+    opts: [
+      { t: "Yes — 遅延する", next: "f_time", tag: "時間操作可" },
+      { t: "No — しない", next: "end_dead", tag: "完全ブラインド" }
+    ]
+  },
+  f_union: {
+    form: "UNION路線 — 確認した値を入れるとビルダーへ転記",
+    fields: [
+      { id: "wz-cols", label: "カラム数", type: "num", val: "4" },
+      { id: "wz-echo", label: "表示列位置", type: "num", val: "2" }
+    ],
+    cta: { t: "UNIONビルダーへ転記", act: "union" },
+    note: "ORDER BY 総当たりでエラー直前の数、表示列は zzN が画面に出る位置。"
+  },
+  f_error: {
+    form: "エラーベース路線",
+    fields: [],
+    cta: { t: "エラーベースタブへ", act: "error" },
+    note: "DBMS別に XPATH / CAST / CONVERT 系を順に撃つ。32文字制限は substr 分割。"
+  },
+  f_bool: {
+    form: "ブール盲注路線 — 抜きたい情報を入力",
+    fields: [
+      { id: "wz-col", label: "カラム名 (必須)", type: "text", val: "pw" },
+      { id: "wz-table", label: "テーブル名 (必須)", type: "text", val: "members" },
+      { id: "wz-where", label: "行の条件", type: "text", val: "id='admin'" },
+      { id: "wz-judge", label: "判定方法", type: "select", val: "in", opts: [["in","文字列が含まれる"],["out","文字列が消える"],["len","応答長が増える"]] }
+    ],
+    cta: { t: "盲注スクリプト生成へ転記", act: "blind" },
+    note: "カラム名が分からない → UNION⑨ 横断カラム検索 (pass/flag等) か辞書総当たり。"
+  },
+  f_time: {
+    form: "時間盲注路線 — 遅延をオラクルにする",
+    fields: [
+      { id: "wz-col", label: "カラム名 (必須)", type: "text", val: "pw" },
+      { id: "wz-table", label: "テーブル名 (必須)", type: "text", val: "members" },
+      { id: "wz-where", label: "行の条件", type: "text", val: "id='admin'" },
+      { id: "wz-delay", label: "遅延秒", type: "num", val: "3" }
+    ],
+    cta: { t: "時間盲注スクリプト生成へ転記", act: "timeblind" },
+    note: "SLEEP が拒否される → benchmark / 重いクエリ (ブラインド タブの代替カード)。"
+  },
+  end_detect: {
+    end: "検出からやり直し",
+    tech: "偵察不足",
+    notes: [
+      "検出タブのプローブ一式 (真偽/時間/エラー差分) を順に撃つ",
+      "パラメータ以外も狙う: XFF / User-Agent / Referer / Cookie / JSONボディ",
+      "数値型パラメータはクォート無しで試す"
+    ],
+    links: [
+      { t: "検出タブへ", act: "detect" },
+      { t: "チートシート (ヘッダ注入)", act: "cheat" }
+    ]
+  },
+  end_bypass: {
+    end: "サニタイズ解除が先",
+    tech: "バイパス → UNION",
+    notes: [
+      "str_replace型 → 二重書き (selselectect)、preg型 → コメント分割 (un/**/ion)",
+      "ソースが貰えるなら貼って自動解析、無いなら逆探査プローブ19種"
+    ],
+    links: [
+      { t: "バイパス設定へ (union+select をセット)", act: "bypassUS" },
+      { t: "フィルタ逆探査", act: "bypass" }
+    ]
+  },
+  end_dead: {
+    end: "完全ブラインド",
+    tech: "OOB / 二次 / スタックド",
+    notes: [
+      "外部通信可 → DNS帯域外で一気に流出 (dnslog/canarytokens)",
+      "PG / MSSQL でスタック可 → RCEチェーンまで直結",
+      "入力が別画面で表示される → 二次注入"
+    ],
+    links: [
+      { t: "RCE / OOB タブへ", act: "rce" },
+      { t: "チートシートへ", act: "cheat" }
+    ]
+  }
+};

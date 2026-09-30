@@ -70,6 +70,8 @@
 
 <div class="content">
 
+<div class="cols">
+
 <main id="main">
 
 <section id="tab-detect" class="panel active" role="tabpanel" aria-labelledby="tabbtn-detect">
@@ -374,6 +376,25 @@
 </section>
 
 </main>
+
+<aside class="wizard" aria-label="攻略ウィザード">
+  <div class="wz-head">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a7 7 0 0 1 7 7c0 2.4-1.2 4.1-2.5 5.6-.8.9-1.5 1.8-1.5 2.9V19a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1.5c0-1.1-.7-2-1.5-2.9C6.2 13.1 5 11.4 5 9a7 7 0 0 1 7-7Z"/><line x1="9" y1="24" x2="15" y2="24"/></svg>
+    <h2>攻略ウィザード</h2>
+    <button type="button" class="btn tiny" id="wz-restart">最初から</button>
+  </div>
+  <label class="wz-dbms">DBMS <select id="wiz-dbms">
+    <option value="mysql">MySQL</option>
+    <option value="postgres">PostgreSQL</option>
+    <option value="sqlite">SQLite</option>
+    <option value="mssql">MSSQL</option>
+    <option value="oracle">Oracle</option>
+  </select></label>
+  <div class="wz-path" id="wz-path" aria-live="polite"></div>
+  <div class="wz-body" id="wz-body"></div>
+</aside>
+
+</div>
 
 <footer>
   <span>SQLi Forge — 単一HTMLでも動作 (build_standalone.sh)。DBMS: MySQL / PostgreSQL / SQLite / MSSQL / Oracle。 <a href="https://github.com/Taka-cst/sqli-forge" style="color:inherit">GitHub: Taka-cst/sqli-forge</a></span>
