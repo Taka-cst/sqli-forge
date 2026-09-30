@@ -1038,3 +1038,27 @@ FILTERS.splice(3, 0,
   { id: "dash", label: "-- のみ禁止", desc: "-- は拒否/削除されるが # は使える → 自動で # に切替" },
   { id: "hash", label: "# のみ禁止", desc: "# は拒否/削除されるが -- は使える → 自動で -- - に切替" }
 );
+
+const ERR_DB_SIGS = [
+  { re: "you have an error in your SQL syntax|check the manual that corresponds to your (?:MySQL|MariaDB) server version|Warning\\s*:\\s*mysql_|mysqli?_[a-z_]+\\(|MySQL server|\\d+\\.\\d+(?:\\.\\d+)?[- ](?:MariaDB|MySQL)", db: "mysql", label: "MySQL / MariaDB" },
+  { re: "invalid input syntax for|psycopg2|PostgreSQL|Npgsql|pg_attrdef", db: "postgres", label: "PostgreSQL" },
+  { re: "Conversion failed when converting|Unclosed quotation mark after|Incorrect syntax near|Microsoft SQL Server|ODBC SQL Server Driver|SQL Server Native Client|pyodbc|SqlClient", db: "mssql", label: "MSSQL (SQL Server)" },
+  { re: "ORA-\\d+|Oracle Database|TNS:|SP2-\\d+", db: "oracle", label: "Oracle" },
+  { re: "SQLITE_[A-Z_]+|SQLite3?::|sqlite3?\\.(?:OperationalError|ProgrammingError|DatabaseError)|unrecognized token|SQL error or missing database|SQLite", db: "sqlite", label: "SQLite" }
+];
+
+const ERR_LEAK_SIGS = [
+  { re: "Duplicate entry '([^']+)'", db: "mysql", how: "FLOOR/GROUP BY error-based (MySQL) — 既に値がリークしている状態" },
+  { re: "XPATH syntax error: '([^']+)'", db: "mysql", how: "EXTRACTVALUE/UPDATEXML error-based (MySQL / 32文字制限)" },
+  { re: "Duplicate column name '([^']+)'", db: "mysql", how: "JOIN 自己結合によるカラム名リーク (MySQL)" },
+  { re: "invalid input syntax for (?:type )?\\w+: ?\"([^\"]+)\"", db: "postgres", how: "CAST error-based (PostgreSQL)" },
+  { re: "Conversion failed when converting the \\w+ value '([^']+)'", db: "mssql", how: "CONVERT/CAST error-based (MSSQL)" }
+];
+
+const ERR_VERSION_SIGS = {
+  mysql: ["(\\d+\\.\\d+(?:\\.\\d+)?)[- ](?:MariaDB|MySQL)", "(?:MySQL|MariaDB)[ versions]{0,14}(\\d+\\.\\d+(?:\\.\\d+)?)"],
+  postgres: ["PostgreSQL (\\d+\\.\\d+)"],
+  mssql: ["SQL Server[^\\d]{0,40}(\\d{2}\\.\\d+(?:\\.\\d+)?)"],
+  oracle: ["Release (\\d+(?:\\.\\d+){2,4})", "Oracle Database (\\d+[a-z]?)"],
+  sqlite: ["SQLite version? (\\d+\\.\\d+\\.\\d+)"]
+};

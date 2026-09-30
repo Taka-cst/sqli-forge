@@ -84,6 +84,13 @@
   </div>
   <h3>プローブ (注入確認)</h3>
   <div id="detect-cards" class="cards"></div>
+  <h3>エラー文 自動解析 (貼り付け)</h3>
+  <p class="lead">画面/レスポンスに出た SQLエラー文をそのまま貼ると、DBMS・バージョン・<code>near</code> 断片・エラー経由のリーク値 (XPATH / Duplicate entry / CAST系) を解析して次の一手を提案する。</p>
+  <textarea id="err-in" class="ta" rows="3" placeholder="例: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near ''1'' LIMIT 0,1' at line 1"></textarea>
+  <div class="ctrl-row">
+    <button type="button" class="btn primary" id="err-run">解析</button>
+  </div>
+  <div id="err-out"></div>
   <h3>データベース フィンガープリント</h3>
   <div id="fingerprint" class="tablewrap"></div>
   <h3>コメント一覧</h3>

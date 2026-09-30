@@ -495,6 +495,48 @@ function analyzeSource(src){
   return {items:out,chips:[...chips],mode:mode};
 }
 
+function analyzeErrorText(text){
+  const t=String(text||"").trim();
+  const out={dbms:null,dbLabel:null,version:null,leaks:[],notes:[],flags:{},near:null,actions:[]};
+  if(!t) return out;
+  for(const s of ERR_DB_SIGS){
+    if(new RegExp(s.re,"i").test(t)){ out.dbms=s.db; out.dbLabel=s.label; break; }
+  }
+  if(out.dbms){
+    for(const vs of ERR_VERSION_SIGS[out.dbms]||[]){
+      const m=t.match(new RegExp(vs,"i"));
+      if(m){ out.version=m[1]; break; }
+    }
+    out.actions.push({t:"エラーベースタブへ (DBMS設定済み)",act:"error",db:out.dbms});
+  }
+  for(const ls of ERR_LEAK_SIGS){
+    const m=t.match(new RegExp(ls.re,"i"));
+    if(m) out.leaks.push({val:m[1],how:ls.how,db:ls.db});
+  }
+  if(out.leaks.length) out.actions.push({t:"エラーベース一覧へ (リークが機能中)",act:"error",db:out.dbms||out.leaks[0].db});
+  const nm=t.match(/near ['"]([^'"\\]{0,150}(?:\\.[^'"\\]{0,150})*)['"]?/i);
+  if(nm) out.near=nm[1];
+  if(/\\['"]/.test(t)) out.flags.escaped=true;
+  if(/unterminated quoted string|quoted string not properly terminated|Unclosed quotation mark/i.test(t)) out.flags.quoted=true;
+  if(/different number of columns|incorrect number of result columns|ORA-01789|used SELECT statements have a different/i.test(t)){
+    out.flags.unionMismatch=true;
+    out.actions.push({t:"UNIONビルダーへ (列数を合わせるだけ)",act:"union",db:out.dbms});
+  }
+  const uc=t.match(/Unknown column '(\d+)' in 'order clause'/i);
+  if(uc){
+    out.flags.colCount=parseInt(uc[1],10)-1;
+    out.actions.push({t:"UNIONビルダーへ (列数 "+out.flags.colCount+" を設定)",act:"union",db:out.dbms,n:String(out.flags.colCount)});
+  }
+  if(out.dbms) out.notes.push("DBMS判定: "+out.dbLabel+(out.version?" / バージョン "+out.version:""));
+  if(out.flags.escaped) out.notes.push("入力がエスケープされている (\\' の形で残存) → 引用符バイパス (hex/ワイドバイト) が必要");
+  if(out.flags.quoted||(/^['"]/.test(out.near||""))) out.notes.push("引用符が閉じられていない = 文字列コンテキスト確定 → プレフィックス 1' 系で注入可");
+  if(out.near) out.notes.push("near 断片 = 注入点直後の元クエリの一部: 「"+out.near+"」 — 直後の構造 (LIMIT/AND等) のヒントになる");
+  if(/Illegal mix of collations/i.test(t)) out.notes.push("照合順序衝突 (collation) — hex比較や COLLATE 指定で回避できる可能性");
+  if(/secure_file_priv|The MySQL server is running with the --secure-file-priv/i.test(t)) out.notes.push("secure_file_priv が効いている → LOAD_FILE/OUTFILE はそのパス配下のみ");
+  if(/SQLSTATE\[/i.test(t)&&!out.dbms) out.notes.push("PDO/DBAL経由 (SQLSTATE) — ドライバ名が無いとDBMS特定不可。時間プローブ (検出タブ) で判定を。");
+  return out;
+}
+
 if(typeof document!=="undefined"){
 
 let state={urlenc:{}};
@@ -1308,6 +1350,25 @@ function renderWizard(){
   }
 }
 
+function runErrAnalyze(){
+  const t=$("err-in").value;
+  const r=analyzeErrorText(t);
+  if(!t.trim()){ $("err-out").innerHTML='<div class="anz"><span class="warn">エラー文を貼り付けてください</span></div>'; return; }
+  if(!r.dbms&&!r.notes.length&&!r.leaks.length){
+    $("err-out").innerHTML='<div class="anz"><span class="warn">既知のシグネチャ無し — カスタムエラー画面の可能性。検出タブの時間/真偽プローブも試すこと。</span></div>';
+    return;
+  }
+  let html="";
+  if(r.dbms) html+='<div class="anz"><span class="ok">✔ '+esc(r.notes[0]||r.dbLabel)+'</span>'
+    +(r.actions.length?'<div class="btnrow">'+r.actions.map((a,i)=>'<button type="button" class="btn tiny" onclick="SQLIFORGE.errAct(this)" data-a="'+esc(a.act)+'" data-db="'+esc(a.db||"")+'" data-n="'+esc(a.n||"")+'">'+esc(a.t)+'</button>').join("")+'</div>':"")+'</div>';
+  if(r.near) html+='<div class="anz"><b>near断片 (注入点の直後)</b><div class="payload">'+esc(r.near)+'</div></div>';
+  r.leaks.forEach(l=>{
+    html+='<div class="anz"><span class="ok">リーク値検出:</span> <b>'+esc(l.val)+'</b><div class="payload">'+esc(l.val)+'</div><span class="fs-note">'+esc(l.how)+'</span></div>';
+  });
+  r.notes.slice(1).forEach(n=>{ html+='<div class="anz"><span class="warn">▸ '+esc(n)+'</span></div>'; });
+  $("err-out").innerHTML=html;
+}
+
 function initUI(){
   window.SQLIFORGE=window.SQLIFORGE||{_lastScript:""};
   initTabs();
@@ -1420,6 +1481,21 @@ function initUI(){
     runBypass();
     toast("プレイグラウンドへ送りました");
   };
+  window.SQLIFORGE.errAct=(btn)=>{
+    const a=btn.dataset.a, d=btn.dataset.db, n=btn.dataset.n;
+    if(a==="error"){ if(d) $("er-dbms").value=d; renderErrors(); switchTab("error"); }
+    else if(a==="union"){
+      if(d&&DB[d]) $("un-dbms").value=d;
+      if(n){ $("un-cols").value=n; $("un-echo").value=Math.max(1,Math.min(parseInt(n,10),2)); }
+      unBuild(); switchTab("union");
+    }
+    else if(a==="bypass"){ active.add("quote"); renderChips(); refreshAll(); switchTab("bypass"); }
+    toast("転記しました");
+  };
+
+  $("err-run").addEventListener("click",runErrAnalyze);
+  $("err-in").addEventListener("input",runErrAnalyze);
+
   window.SQLIFORGE._internals={active:active,refreshAll:refreshAll,wzGo:wzGo,renderWizard:renderWizard,wz:wz,customBans:customBans,parseCustomBans:parseCustomBans,setBans:s=>{customBans=s;}};
   refreshAll();
   genScript(false);
