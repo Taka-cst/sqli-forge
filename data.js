@@ -226,7 +226,7 @@ const ERRORS = {
 const FILTERS = [
   { id: "space", label: "スペース", desc: "' ' が削除/拒否される" },
   { id: "inline", label: "/* */ 禁止", desc: "インラインコメントが使えない" },
-  { id: "comment", label: "-- # 禁止", desc: "行コメントが使えない" },
+  { id: "comment", label: "行コメント両方 (-- #)", desc: "-- も # も拒否される → 引用符で自分で閉じる / %00" },
   { id: "quote", label: "引用符 ' \"", desc: "クォートがエスケープ/除去 (addslashes等)" },
   { id: "eq", label: "= 禁止", desc: "イコールが拒否される" },
   { id: "andor", label: "and / or", desc: "AND/OR 単語が拒否される" },
@@ -805,7 +805,8 @@ const FILEREAD = {
 const FILTER_PROBES = [
   { label: "引用符 '", p: "'", chip: "quote" },
   { label: "スペース", p: "1 1", chip: "space" },
-  { label: "行コメント --", p: "1-- -", chip: "comment" },
+  { label: "コメント --", p: "1-- -", chip: "dash" },
+  { label: "コメント #", p: "1#", chip: "hash" },
   { label: "ブロックコメント /*", p: "1/*", chip: "inline" },
   { label: "カンマ ,", p: "1,1", chip: "comma" },
   { label: "括弧 ( )", p: "(1)", chip: "paren" },
@@ -991,8 +992,8 @@ CHEATS.push(
 );
 
 const BAN_TO_CHIP = [
-  { t: "--", chips: ["comment"] },
-  { t: "#", chips: ["comment"] },
+  { t: "--", chips: ["dash"] },
+  { t: "#", chips: ["hash"] },
   { t: "/*", chips: ["inline", "comment"] },
   { t: "*/", chips: ["inline"] },
   { t: "/**/", chips: ["inline"] },
@@ -1031,4 +1032,9 @@ CHEATS.push(
     k: "custom ban 禁止文字 自由入力 %0b %0d 代替 選択",
     d: "<ul><li>禁止トークンを1行1個 (カンマ区切り可) で入力すると: <b>既知トークン</b> (-- # /* ' \" 空白 , = ( union select sleep substr ascii if information_schema 0x 数字 …) は対応チップを自動ON</li><li><b>空白代替系</b> (%09 %0a %0b %0c %0d %a0 /**/) は「禁止されていないもの」を自動選択 (全部禁止なら括弧グルーピングへの警告)</li><li><b>未知のキーワード</b> (from where concat など) は最終パスで二重書き (str_replace型) またはコメント分割 (preg型) を自動適用</li><li>変換しきれないものは「残存」警告で明示 (引用符内リテラルなど、値そのものは書き換え不能)</li></ul>"
   }
+);
+
+FILTERS.splice(3, 0,
+  { id: "dash", label: "-- のみ禁止", desc: "-- は拒否/削除されるが # は使える → 自動で # に切替" },
+  { id: "hash", label: "# のみ禁止", desc: "# は拒否/削除されるが -- は使える → 自動で -- - に切替" }
 );
