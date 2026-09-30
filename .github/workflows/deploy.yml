@@ -54,6 +54,7 @@ jobs:
               checked:!!(defaults[id]&&defaults[id].checked),
               classList:{add(){},remove(){},toggle(){}},
               addEventListener(){},appendChild(){},click(){},select(){},setAttribute(){},
+              querySelectorAll(){return [];},
               setAttribute2(){}};
             let _v=defaults[id]?defaults[id].value:"";
             Object.defineProperty(el,"value",{get:()=>_v,set:v=>{_v=v;}});
@@ -68,7 +69,7 @@ jobs:
           let code=fs.readFileSync("/tmp/bundle.js","utf8").replace(`"use strict";`,"");
           code=code.replace(`document.addEventListener("DOMContentLoaded",initUI);`,"initUI();");
           eval(code);
-          const need=["detect-cards","authbypass-cards","un-colcount","un-info","un-xenum","bl-char","er-cards","ns-blind","rc-cards","bp-probes","ch-list"];
+          const need=["detect-cards","authbypass-cards","un-colcount","un-info","un-xenum","bl-char","er-cards","ns-blind","rc-cards","bp-probes","ch-list","wz-body"];
           let bad=[];
           for(const id of need){const el=document.getElementById(id);if(!el.innerHTML||el.innerHTML.length<50)bad.push(id);}
           if(bad.length){console.error("RENDER FAIL:",bad.join(","));process.exit(1);}
