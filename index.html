@@ -311,6 +311,9 @@
     <button type="button" class="btn" id="bp-clear">全クリア</button>
   </div>
   <div id="bp-chips" class="chips"></div>
+  <label style="width:100%">カスタム禁止文字列 (1行1個 / カンマ区切り。既知トークンは自動チップ化、空白代替は禁止外を自動選択、未知キーワードは二重書き/分割)
+    <textarea id="bp-custom" class="ta" rows="2" placeholder="例: --&#10;/*&#10;%0b&#10;from"></textarea>
+  </label>
 
   <h3>③ 手動変換プレイグラウンド (1個だけ試す時)</h3>
   <textarea id="bp-input" class="ta" rows="4">1' UNION SELECT 1,version(),3 FROM information_schema.tables-- -</textarea>

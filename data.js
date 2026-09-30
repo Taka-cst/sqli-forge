@@ -989,3 +989,46 @@ CHEATS.push(
     ]
   }
 );
+
+const BAN_TO_CHIP = [
+  { t: "--", chips: ["comment"] },
+  { t: "#", chips: ["comment"] },
+  { t: "/*", chips: ["inline", "comment"] },
+  { t: "*/", chips: ["inline"] },
+  { t: "/**/", chips: ["inline"] },
+  { t: "'", chips: ["quote"] },
+  { t: '"', chips: ["quote"] },
+  { t: " ", chips: ["space"] },
+  { t: "%20", chips: ["space"] },
+  { t: ",", chips: ["comma"] },
+  { t: "=", chips: ["eq"] },
+  { t: "and", chips: ["andor"] },
+  { t: "or", chips: ["andor"] },
+  { t: "&&", chips: ["andor"] },
+  { t: "||", chips: ["andor"] },
+  { t: "union", chips: ["union"] },
+  { t: "select", chips: ["select"] },
+  { t: "(", chips: ["paren"] },
+  { t: ")", chips: ["paren"] },
+  { t: "sleep", chips: ["sleep"] },
+  { t: "substr", chips: ["substr"] },
+  { t: "substring", chips: ["substr"] },
+  { t: "mid", chips: ["substr"] },
+  { t: "ascii", chips: ["ascii"] },
+  { t: "ord", chips: ["ascii"] },
+  { t: "if", chips: ["if"] },
+  { t: "information_schema", chips: ["infoschema"] },
+  { t: "0x", chips: [] },
+  { t: "0-9", chips: ["number"] },
+  { t: "[0-9]", chips: ["number"] },
+  { t: "A-Z", chips: ["upper"] },
+  { t: "a-z", chips: ["lower"] }
+];
+
+CHEATS.push(
+  {
+    t: "カスタム禁止文字列入力 (バイパス設定②)",
+    k: "custom ban 禁止文字 自由入力 %0b %0d 代替 選択",
+    d: "<ul><li>禁止トークンを1行1個 (カンマ区切り可) で入力すると: <b>既知トークン</b> (-- # /* ' \" 空白 , = ( union select sleep substr ascii if information_schema 0x 数字 …) は対応チップを自動ON</li><li><b>空白代替系</b> (%09 %0a %0b %0c %0d %a0 /**/) は「禁止されていないもの」を自動選択 (全部禁止なら括弧グルーピングへの警告)</li><li><b>未知のキーワード</b> (from where concat など) は最終パスで二重書き (str_replace型) またはコメント分割 (preg型) を自動適用</li><li>変換しきれないものは「残存」警告で明示 (引用符内リテラルなど、値そのものは書き換え不能)</li></ul>"
+  }
+);

