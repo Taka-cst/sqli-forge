@@ -243,17 +243,32 @@ function applyFilters(payload, active, mode, bans){
     if(p!==before&&/,/.test(p)) warns.push("まだカンマが残っている (ネストした式等): 手動で FROM-FOR / OFFSET / 16進化 すること。");
   }
 
-  if(has("eq")){
-    const before=p;
-    p=p.replace(/(?<![<>!=])=(?!=)/g," like ");
-    if(p!==before) steps.push("= を LIKE に変換 (_ と % はワイルドカード扱いになる点に注意)");
-  }
-
   if(has("andor")){
     const before=p;
     p=p.replace(/\band\b/gi,"&&").replace(/\bor\b/gi,"||");
     if(p!==before){ steps.push("and/or を && / || に変換 (URLでは %26%26 / %7C%7C)"); }
     if(/information_schema|order|for/i.test(p)) warns.push("注意: ブラックリストが /or/i の部分一致なら information_schema・order・for も拒否される。information_schema は mysql.innodb_table_stats 等へ置換、order by は group by 等へ。");
+  }
+
+  if(has("eq")){
+    const likeUsable=!banHas("like")&&!banHas("li");
+    const betweenUsable=!banHas("between")&&!banHas("and");
+    const notLtGt=!banHas("<>")&&!banHas("not")&&!banHas("(")&&!banHas(")")&&!has("paren")&&!banHas("<")&&!banHas(">");
+    const before=p;
+    if(likeUsable){
+      p=p.replace(/(?<![<>!=])=(?!=)/g," like ");
+      if(p!==before) steps.push("= を LIKE に変換 (_ と % はワイルドカード扱いになる点に注意)");
+    }else if(betweenUsable){
+      p=p.replace(/([A-Za-z0-9_'`\)\]]+(?:\s*\+\s*[A-Za-z0-9_'`\)\]]+)*)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+(?:\s*\+\s*[A-Za-z0-9_'`\(\]]+)*)/g,"$1 BETWEEN $2 AND $2");
+      if(p!==before) steps.push("= を BETWEEN v AND v (同値両端=等価) に変換 — LIKE が禁止のため");
+    }else if(notLtGt){
+      const operand="([A-Za-z0-9_'`\\)\\]]+(?:\\s*\\+\\s*[A-Za-z0-9_'`\\)\\]]+)*)";
+      const operandR="([A-Za-z0-9_'`\\(\\[]+(?:\\s*\\+\\s*[A-Za-z0-9_'`\\(\\]]+)*)";
+      p=p.replace(new RegExp(operand+"\\s*(?<![<>!=])=(?!=)\\s*"+operandR,"g"),"NOT($1<>$2)");
+      if(p!==before) steps.push("= を NOT(x<>y) 形式に変換 — LIKE/BETWEEN が禁止のため");
+    }else{
+      warns.push("= が禁止 & LIKE・BETWEEN・括弧も不可 → 手動で: IN(v) / REGEXP '^v$' / x>y-1&&x<y+1 (数値) / IS NOT DISTINCT FROM (PG) のいずれかで。");
+    }
   }
 
   if(has("quote")){
@@ -408,10 +423,16 @@ function applyFilters(payload, active, mode, bans){
           continue;
         }
       }
-      if(tok.length>=3){
+      if(isAlpha&&tok.length>=3){
         const pe=tok[0]+"%25"+tok.slice(1);
         if(applyMasked(pe)){
           steps.push("カスタム禁止語 <b>"+tok+"</b> を部分URLエンコード化: "+pe+" (サーバが再度デコードする場合のみ有効)");
+          continue;
+        }
+        const np=p.replace(new RegExp(tok,"gi"),pe);
+        if(np!==p){
+          p=np;
+          steps.push("カスタム禁止語 <b>"+tok+"</b> を部分URLエンコード化: "+pe+" (引用符内リテラルも対象。値が変わる恐れがあれば手動調整)");
           continue;
         }
       }
