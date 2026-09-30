@@ -282,11 +282,11 @@ function applyFilters(payload, active, mode, bans){
         if(v!==p){ variants.push({t:"= 代替: REGEXP演算子 (MySQL/括弧不要・hexパターン)"+note(v),p:v}); made=true; }
       }
       if(anyEq&&pgOk){
-        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 ~ '^$3$'");
+        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 ~ '^$2$'");
         if(v!==p){ variants.push({t:"= 代替: ~ 演算子 (PostgreSQL)"+note(v),p:v}); made=true; }
       }
       if(anyEq&&isndOk){
-        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 IS NOT DISTINCT FROM $3");
+        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 IS NOT DISTINCT FROM $2");
         if(v!==p){ variants.push({t:"= 代替: IS NOT DISTINCT FROM (PostgreSQL・括弧不要)"+note(v),p:v}); made=true; }
       }
       if(made) warns.push("= の自動変換不能 (LIKE・BETWEEN・NOT<> が全て禁止のため出力に = が残る) → 代替案カードに REGEXP / ~ / IS NOT DISTINCT FROM 版を生成済み。末尾開放部の = は手動注意。");
