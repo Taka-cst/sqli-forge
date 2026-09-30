@@ -267,7 +267,30 @@ function applyFilters(payload, active, mode, bans){
       p=p.replace(new RegExp(operand+"\\s*(?<![<>!=])=(?!=)\\s*"+operandR,"g"),"NOT($1<>$2)");
       if(p!==before) steps.push("= を NOT(x<>y) 形式に変換 — LIKE/BETWEEN が禁止のため");
     }else{
-      warns.push("= が禁止 & LIKE・BETWEEN・括弧も不可 → 手動で: IN(v) / REGEXP '^v$' / x>y-1&&x<y+1 (数値) / IS NOT DISTINCT FROM (PG) のいずれかで。");
+      let made=false;
+      const escRe=s=>s.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+      const rxOk=!banHas("regexp")&&!banHas("rlike");
+      const pgOk=!banHas("~");
+      const isndOk=!banHas("is")&&!banHas("not")&&!banHas("distinct")&&!banHas("from");
+      const anyEq=/(?<![<>!=])=(?!=)/.test(p);
+      const eqCount=s=>(s.match(/(?<![<>!=])=(?!=)/g)||[]).length;
+      const note=v=>{ const rem=eqCount(v); return rem?" (未変換の=が"+rem+"個 = 末尾開放部。X='v は X REGEXP 0x<hex>24 形へ手動で)":""; };
+      if(anyEq&&rxOk){
+        const v=p
+          .replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*'([^']*)'/g,(m,a,b)=>a+" REGEXP "+(hexLit("^"+escRe(b)+"$")||("'"+b+"'")))
+          .replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([0-9]+)/g,(m,a,b)=>a+" REGEXP "+(hexLit("^"+b+"$")||b));
+        if(v!==p){ variants.push({t:"= 代替: REGEXP演算子 (MySQL/括弧不要・hexパターン)"+note(v),p:v}); made=true; }
+      }
+      if(anyEq&&pgOk){
+        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 ~ '^$3$'");
+        if(v!==p){ variants.push({t:"= 代替: ~ 演算子 (PostgreSQL)"+note(v),p:v}); made=true; }
+      }
+      if(anyEq&&isndOk){
+        const v=p.replace(/([A-Za-z0-9_'`\)\]]+)\s*(?<![<>!=])=(?!=)\s*([A-Za-z0-9_'`\(\[]+)/g,"$1 IS NOT DISTINCT FROM $3");
+        if(v!==p){ variants.push({t:"= 代替: IS NOT DISTINCT FROM (PostgreSQL・括弧不要)"+note(v),p:v}); made=true; }
+      }
+      if(made) warns.push("= の自動変換不能 (LIKE・BETWEEN・NOT<> が全て禁止のため出力に = が残る) → 代替案カードに REGEXP / ~ / IS NOT DISTINCT FROM 版を生成済み。末尾開放部の = は手動注意。");
+      else if(anyEq) warns.push("= の自動変換不能で代替生成も不可 (REGEXP/~ /IS NOT DISTINCT FROM も禁止?) → 手動: 数値なら x>y-1&&x<y+1、または LIKE/BETWEEN/括弧いずれかの禁止を緩めて再変換。");
     }
   }
 
@@ -438,7 +461,7 @@ function applyFilters(payload, active, mode, bans){
       }
       warns.push("カスタム禁止トークン '"+tok+"' が引用符内リテラル等で残存 → 値そのものは書き換え不能。対象値の取得方法 (LIKE部分一致など) で手動回避を。");
     }else{
-      if(p.includes(tok)) warns.push("カスタム禁止トークン '"+tok+"' がペイロードに残存 → 自動変換不能 (記号)。手動で回避すること。");
+      if(p.includes(tok)&&!(tok==="="&&has("eq"))) warns.push("カスタム禁止トークン '"+tok+"' がペイロードに残存 → 自動変換不能 (記号)。手動で回避すること。");
     }
   }
 
@@ -447,7 +470,7 @@ function applyFilters(payload, active, mode, bans){
   if(has("comma")&&/,/.test(p)) leftovers.push("カンマ");
   if(has("quote")&&/'/.test(p)) leftovers.push("引用符");
   if(has("paren")&&/[()]/.test(p)) leftovers.push("括弧");
-  if(has("eq")&&/(?<![<>!=])=(?!=)/.test(p)) leftovers.push("=");
+  if(has("eq")&&/(?<![<>!=])=(?!=)/.test(p)&&!leftovers.includes("=")) {}
   if(leftovers.length) warns.push("変換しきれていない文字が残存: "+leftovers.join(", ")+" → 手動調整が必要。");
 
   variants.push({t:"大文字小文字ランダム化 (WAF/正規表現が大小文字区別する場合)",p:randomCase(p)});
